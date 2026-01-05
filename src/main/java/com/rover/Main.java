@@ -4,6 +4,7 @@ import com.formdev.flatlaf.FlatLightLaf;
 import com.rover.ui.MainWindow;
 
 import javax.swing.*;
+import java.net.SocketException;
 
 /**
  * Point d'entrée de l'utilitaire
@@ -20,8 +21,13 @@ public class Main {
         }
 
         SwingUtilities.invokeLater(() -> { // Lancer l'interface sur un thread séparé
-            MainWindow window = new MainWindow();
-            // window.setVisible(true);
+            MainWindow window = null;
+            try {
+                window = new MainWindow();
+            } catch (SocketException e) {
+                throw new RuntimeException(e);
+            }
+            window.setVisible(true);
         });
     }
 }
