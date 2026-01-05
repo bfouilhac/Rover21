@@ -13,6 +13,13 @@ public class NetworkInterfaceCustom {
     private boolean isUp; // Interface active ou non
     private boolean isLoopback;
 
+    public String getName() {return name;}
+    public String getIpAddress() {return ipAddress;}
+
+    public void setUp(boolean up) {this.isUp = up;}
+    public void setLoopback(boolean loopback) {this.isLoopback = loopback;}
+
+
     public enum AdapterType {
         ETHERNET("Ethernet"),
         WIFI("Wi-Fi"),
@@ -46,13 +53,12 @@ public class NetworkInterfaceCustom {
 
     /**
      * Calcule l'adresse réseau à partir de l'IP et du masque
-     * Exemple: IP=192.168.1.100, Mask=255.255.255.0 → Network=192.168.1.0
+     * Exemple: IP=192.168.1.100, Mask=255.255.255.0 => Network=192.168.1.0
      */
     private String calculateNetworkAddress(String ip, String mask) {
         if (ip == null || mask == null) {
             return null;
         }
-
         try {
             String[] ipParts = ip.split("\\.");
             String[] maskParts = mask.split("\\.");
@@ -60,7 +66,6 @@ public class NetworkInterfaceCustom {
             if (ipParts.length != 4 || maskParts.length != 4) {
                 return null;
             }
-
             StringBuilder network = new StringBuilder();
             for (int i = 0; i < 4; i++) {
                 int ipByte = Integer.parseInt(ipParts[i]);
@@ -72,7 +77,6 @@ public class NetworkInterfaceCustom {
                     network.append(".");
                 }
             }
-
             return network.toString();
         } catch (Exception e) {
             return null;
@@ -81,17 +85,13 @@ public class NetworkInterfaceCustom {
 
     /**
      * Retourne une chaîne formatée pour affichage dans la ComboBox
-     * Format: "192.168.1.100 (A8:F7:E0:C3:48:64) - Ethernet"
+     * Format: "192.168.1.100 - Nom de l'interface"
      */
     public String toDisplayString() {
         StringBuilder sb = new StringBuilder();
 
         if (ipAddress != null) {
             sb.append(ipAddress);
-        }
-
-        if (macAddress != null) {
-            sb.append(" (").append(macAddress).append(")");
         }
 
         if (displayName != null && !displayName.equals(name)) {
@@ -101,8 +101,8 @@ public class NetworkInterfaceCustom {
     }
 
     /**
-     * Vérifie si cet adaptateur est valide pour scanner
-     * (doit être actif, avoir une IP, ne pas être loopback)
+     * Vérifie si cet adresse est valide pour scanner
+     * (doit être active, avoir une IP, ne pas être loopback)
      */
     public boolean isValidForScanning() {
         return isUp &&

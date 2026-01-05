@@ -17,24 +17,8 @@ public class PlanetSwitchDevice {
     private String netMask; // Masque de sous-réseau
     private String gateway; // Passerelle par défaut
     private String description; // Description du switch
-    private LocalDateTime discoveredAt; // Date/heure de découverte (pour des logs éventuelles)
+    private final LocalDateTime discoveredAt; // Date/heure de découverte (pour des logs éventuelles)
     private boolean isOnline; // État du device (en ligne ou non)
-
-    // Constructeur complet
-    public PlanetSwitchDevice(String macAddress, String deviceName, String version,
-                         String deviceIp, String ipAddress, String netMask,
-                         String gateway, String description) {
-        this.macAddress = macAddress;
-        this.deviceName = deviceName;
-        this.version = version;
-        this.deviceIp = deviceIp;
-        this.ipAddress = ipAddress;
-        this.netMask = netMask;
-        this.gateway = gateway;
-        this.description = description;
-        this.discoveredAt = LocalDateTime.now();
-        this.isOnline = true;
-    }
 
     // Constructeur vide (si attribut(s) nul(s)...)
     public PlanetSwitchDevice() {
@@ -42,16 +26,36 @@ public class PlanetSwitchDevice {
         this.isOnline = false;
     }
 
+    // Liste de tous les getters (récupère la valeur de l'attribut)
+    public String getMacAddress() {return macAddress;}
+    public String getDeviceName() {return deviceName;}
+    public String getVersion() {return version;}
+    public String getDeviceIp() {return deviceIp;}
+    public String getIpAddress() {return ipAddress;}
+    public String getNetMask() {return netMask;}
+    public String getGateway() {return gateway;}
+    public String getDescription() {return description;}
+
+    public void setMacAddress(String macAddress) {this.macAddress = macAddress;}
+    public void setDeviceName(String deviceName) {this.deviceName = deviceName;}
+    public void setVersion(String version) {this.version = version;}
+    public void setDeviceIp(String deviceIp) {this.deviceIp = deviceIp;}
+    public void setIpAddress(String ipAddress) {this.ipAddress = ipAddress;}
+    public void setNetMask(String netMask) {this.netMask = netMask;}
+    public void setGateway(String gateway) {this.gateway = gateway;}
+    public void setDescription(String description) {this.description = description;}
+    public void setOnline(boolean online) {this.isOnline = online;}
+
     /**
      * Vérifie si ce device est un switch PLANET en se basant sur l'OUI MAC
-     * Les OUI connus de PLANET : 00:30:4F, 00:50:FC, etc.
+     * Les OUI connus de PLANET : 00:30:4F et A8:F7:E0
      */
     public boolean isPlanetDevice() {
         if (macAddress == null || macAddress.length() < 8) {
             return false;
         }
         String oui = macAddress.substring(0, 8).toUpperCase();
-        return oui.startsWith("00:30:4F") || oui.startsWith("00:50:FC");
+        return oui.startsWith("00:30:4F") || oui.startsWith("A8:F7:E0");
     }
 
     /**
