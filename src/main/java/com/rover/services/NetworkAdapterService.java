@@ -61,11 +61,8 @@ public class NetworkAdapterService {
             String name = netInterface.getName();
             String displayName = netInterface.getDisplayName();
             String ip = ipAddress.getHostAddress();
-            String mac = formatMacAddress(netInterface.getHardwareAddress());
-            String netmask = calculateNetmask(netInterface, ipAddress);
-            NetworkInterfaceCustom.AdapterType type = detectAdapterType(displayName, name);
 
-            NetworkInterfaceCustom adapter = new NetworkInterfaceCustom(name, displayName, ip, mac, netmask, type);
+            NetworkInterfaceCustom adapter = new NetworkInterfaceCustom(name, displayName, ip);
             adapter.setUp(netInterface.isUp());
             adapter.setLoopback(netInterface.isLoopback());
             return adapter;
@@ -122,29 +119,6 @@ public class NetworkAdapterService {
                 (mask >> 8) & 0xff,
                 mask & 0xff
         );
-    }
-
-    /**
-     * Détecte le type d'adaptateur (Ethernet, Wi-Fi, VPN)
-     * Basé sur le nom de l'interface
-     */
-    private NetworkInterfaceCustom.AdapterType detectAdapterType(String displayName, String name) {
-        String lowerName = (displayName + " " + name).toLowerCase();
-
-        if (lowerName.contains("wi-fi") || lowerName.contains("wifi") ||
-                lowerName.contains("wireless") || lowerName.contains("wlan")) {
-            return NetworkInterfaceCustom.AdapterType.WIFI;
-        } else if (lowerName.contains("vpn") || lowerName.contains("tap") ||
-                lowerName.contains("tun")) {
-            return NetworkInterfaceCustom.AdapterType.VPN;
-        } else if (lowerName.contains("ethernet") || lowerName.contains("eth") ||
-                lowerName.contains("lan")) {
-            return NetworkInterfaceCustom.AdapterType.ETHERNET;
-        } else if (lowerName.contains("loopback") || lowerName.contains("lo")) {
-            return NetworkInterfaceCustom.AdapterType.LOOPBACK;
-        }
-
-        return NetworkInterfaceCustom.AdapterType.ETHERNET; // Par défaut
     }
 
     /**

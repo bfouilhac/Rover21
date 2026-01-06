@@ -1,91 +1,46 @@
 package com.rover.model;
 
 import java.util.Objects;
+import
 
+/**
+ * Customized class representing a network interface.
+ * Allows you to manage the various pieces of information needed to process network interfaces in the application.
+ * Written by Benjamin FOUILHAC ADM21 in January-February 2026.
+ */
 public class NetworkInterfaceCustom {
 
-    private String name; // Nom de l'interface
-    private String displayName; // Nom d'affichage
-    private String ipAddress; // Adresse IP de l'interface
-    private String macAddress; // Adresse MAC de l'interface
-    private String netMask; // Masque de sous-réseau
-    private String networkAddress; // Adresse du réseau (calculée)
-    private boolean isUp; // Interface active ou non
-    private boolean isLoopback;
+    private final String name; // Interface name
+    private final String displayName; // Interface name that will be displayed (ex: Realtek PCIe Family Controller)
+    private final String ipAddress; // IPv4 Address linked to the specific interface
+    private boolean isUp; // Shows whether its enabled or disabled
+    private boolean isLoopback; // Shows whether its enabled or not
 
+    // Getters
     public String getName() {return name;}
     public String getIpAddress() {return ipAddress;}
 
+    // Setters
     public void setUp(boolean up) {this.isUp = up;}
     public void setLoopback(boolean loopback) {this.isLoopback = loopback;}
 
-
-    public enum AdapterType {
-        ETHERNET("Ethernet"),
-        WIFI("Wi-Fi"),
-        VPN("VPN"),
-        LOOPBACK("Loopback"),
-        UKN("Unknown");
-
-        private final String displayName;
-
-        AdapterType(String displayName) {
-            this.displayName = displayName;
-        }
-
-        public String getDisplayName() {
-            return displayName;
-        }
-    }
-
-    // Constructeur complet
-    public NetworkInterfaceCustom(String name, String displayName, String ipAddress,
-                          String macAddress, String netMask, AdapterType type) {
+    /**
+     * Constructor, initialize attributs by the parameters, sets isUp true and isLoopback false by default
+     * @param name Interface name
+     * @param displayName Interface name that will be displayed (ex: Realtek PCIe Family Controller)
+     * @param ipAddress IPv4 Address linked to the specific interface
+     */
+    public NetworkInterfaceCustom(String name, String displayName, String ipAddress) {
         this.name = name;
         this.displayName = displayName;
         this.ipAddress = ipAddress;
-        this.macAddress = macAddress;
-        this.netMask = netMask;
         this.isUp = true;
         this.isLoopback = false;
-        this.networkAddress = calculateNetworkAddress(ipAddress, netMask);
     }
 
     /**
-     * Calcule l'adresse réseau à partir de l'IP et du masque
-     * Exemple: IP=192.168.1.100, Mask=255.255.255.0 => Network=192.168.1.0
-     */
-    private String calculateNetworkAddress(String ip, String mask) {
-        if (ip == null || mask == null) {
-            return null;
-        }
-        try {
-            String[] ipParts = ip.split("\\.");
-            String[] maskParts = mask.split("\\.");
-
-            if (ipParts.length != 4 || maskParts.length != 4) {
-                return null;
-            }
-            StringBuilder network = new StringBuilder();
-            for (int i = 0; i < 4; i++) {
-                int ipByte = Integer.parseInt(ipParts[i]);
-                int maskByte = Integer.parseInt(maskParts[i]);
-                int networkByte = ipByte & maskByte;
-
-                network.append(networkByte);
-                if (i < 3) {
-                    network.append(".");
-                }
-            }
-            return network.toString();
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    /**
-     * Retourne une chaîne formatée pour affichage dans la ComboBox
-     * Format: "192.168.1.100 - Nom de l'interface"
+     * Build a formatted string that contains : IPv4 Address and DisplayName for this interface
+     * @return The string that was created and validated
      */
     public String toDisplayString() {
         StringBuilder sb = new StringBuilder();
@@ -101,15 +56,27 @@ public class NetworkInterfaceCustom {
     }
 
     /**
-     * Vérifie si cet adresse est valide pour scanner
-     * (doit être active, avoir une IP, ne pas être loopback)
+     * Checks if this interface is valid for a discovery
+     * Basically : active, IPv4 that is valid and not loopback
+     * @return whether the conditions are true or not
      */
     public boolean isValidForScanning() {
         return isUp &&
                 !isLoopback &&
                 ipAddress != null &&
                 !ipAddress.isEmpty() &&
-                !ipAddress.startsWith("127.");
+                !ipAddress.startsWith("127.") &&
+                validateIPv4Address(ipAddress);
+    }
+
+    /**
+     * Small method that checks if a specific IPv4 Address is correct.
+     * @param ipAddress the address you want to check.
+     * @return True if it matches the pattern, false either.
+     * @see String#matches(String)
+     */
+    private boolean validateIPv4Address(String ipAddress) {
+        return ipAddress.matches("^((0|1\\d?\\d?|2[0-4]?\\d?|25[0-5]?|[3-9]\\d?)\\.){3}(0|1\\d?\\d?|2[0-4]?\\d?|25[0-5]?|[3-9]\\d?)$")
     }
 
     @Override
