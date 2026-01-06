@@ -5,7 +5,7 @@ import java.util.Objects;
 /**
  * Customized class representing a network interface.
  * Allows you to manage the various pieces of information needed to process network interfaces in the application.
- * Written by Benjamin FOUILHAC ADM21 in January-February 2026.
+ * @author Benjamin FOUILHAC, ADM21 in January-February 2026.
  */
 public class NetworkInterfaceCustom {
 
@@ -24,10 +24,10 @@ public class NetworkInterfaceCustom {
     public void setLoopback(boolean loopback) {this.isLoopback = loopback;}
 
     /**
-     * Constructor, initialize attributs by the parameters, sets isUp true and isLoopback false by default
-     * @param name Interface name
-     * @param displayName Interface name that will be displayed (ex: Realtek PCIe Family Controller)
-     * @param ipAddress IPv4 Address linked to the specific interface
+     * Constructor, initialize attributs by the parameters, sets isUp true and isLoopback false by default.
+     * @param name Interface name.
+     * @param displayName Interface name that will be displayed (ex: Realtek PCIe Family Controller).
+     * @param ipAddress IPv4 Address linked to the specific interface.
      */
     public NetworkInterfaceCustom(String name, String displayName, String ipAddress) {
         this.name = name;
@@ -38,8 +38,8 @@ public class NetworkInterfaceCustom {
     }
 
     /**
-     * Build a formatted string that contains : IPv4 Address and DisplayName for this interface
-     * @return The string that was created and validated
+     * Build a formatted string that contains : IPv4 Address and DisplayName for this interface.
+     * @return The string that was created and validated.
      */
     public String toDisplayString() {
         StringBuilder sb = new StringBuilder();
@@ -55,9 +55,9 @@ public class NetworkInterfaceCustom {
     }
 
     /**
-     * Checks if this interface is valid for a discovery
-     * Basically : active, IPv4 that is valid and not loopback
-     * @return whether the conditions are true or not
+     * Checks if this interface is valid for a discovery.
+     * Basically : active, IPv4 that is valid and not loopback.
+     * @return whether the conditions are true or not.
      */
     public boolean isValidForScanning() {
         return isUp &&

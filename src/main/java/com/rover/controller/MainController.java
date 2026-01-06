@@ -14,7 +14,7 @@ import java.util.List;
 /**
  * Main controller for the Rover21 application.
  * Coordinates interactions between the view (MainWindow) and services.
- * Written by Benjamin FOUILHAC ADM21 in January-February 2026.
+ * @author Benjamin FOUILHAC, ADM21 in January-February 2026.
  */
 public class MainController implements MainWindow.UIEventListener {
 

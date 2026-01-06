@@ -10,16 +10,18 @@ import java.util.Enumeration;
 import java.util.List;
 
 /**
- * Service pour gérer les interfaces réseau
- * Scanne et liste toutes les interfaces réseau disponibles sur la machine
+ * Service for managing network interfaces.
+ * Scans and lists all network interfaces available on the PC.
+ * @author Benjamin FOUILHAC, ADM21 in January-February 2026.
  */
 public class NetworkAdapterService {
 
     private static final Logger logger = LoggerFactory.getLogger(NetworkAdapterService.class);
 
     /**
-     * Récupère toutes les interfaces réseau avec une adresse IPv4 valide
-     * @return Liste des NetworkInterfaceCustom disponibles
+     * Get all the network interfaces with a valid IPv4 address.
+     * @return the list of NetworkInterfaceCustom adapters built from the scan.
+     * @see NetworkInterfaceCustom
      */
     public List<NetworkInterfaceCustom> getAvailableAdapters() {
         List<NetworkInterfaceCustom> adapters = new ArrayList<>();
@@ -41,8 +43,7 @@ public class NetworkAdapterService {
                         NetworkInterfaceCustom adapter = createAdapter(netInterface, (Inet4Address) inetAddress);
                         if (adapter != null) {
                             adapters.add(adapter);
-                            logger.info("Found network adapter: {} - {}",
-                                    adapter.getName(), adapter.getIpAddress());
+                            logger.info("Found network adapter : {} - {}", adapter.getName(), adapter.getIpAddress());
                         }
                     }
                 }
@@ -54,7 +55,12 @@ public class NetworkAdapterService {
     }
 
     /**
-     * Crée un NetworkInterfaceCustom à partir d'une NetworkInterface Java
+     * Build a NetworkInterfaceCustom from a NetworkInterface.
+     * @param netInterface the NetworkInterface.
+     * @param ipAddress the IPv4 Address linked to the specific interface.
+     * @return the instance of NetworkInterfaceCustom created.
+     * @see NetworkInterfaceCustom
+     * @see NetworkInterface
      */
     private NetworkInterfaceCustom createAdapter(NetworkInterface netInterface, Inet4Address ipAddress) {
         try {
@@ -73,62 +79,14 @@ public class NetworkAdapterService {
     }
 
     /**
-     * Formate l'adresse MAC au format standard (AA:BB:CC:DD:EE:FF)
-     */
-    private String formatMacAddress(byte[] macBytes) {
-        if (macBytes == null || macBytes.length == 0) {
-            return "N/A";
-        }
-
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < macBytes.length; i++) {
-            sb.append(String.format("%02X", macBytes[i]));
-            if (i < macBytes.length - 1) {
-                sb.append(":");
-            }
-        }
-        return sb.toString();
-    }
-
-    /**
-     * Calcule le masque de sous-réseau
-     */
-    private String calculateNetmask(NetworkInterface netInterface, Inet4Address ipAddress) {
-        try {
-            for (InterfaceAddress interfaceAddress : netInterface.getInterfaceAddresses()) {
-                if (interfaceAddress.getAddress().equals(ipAddress)) {
-                    short prefixLength = interfaceAddress.getNetworkPrefixLength();
-                    return prefixLengthToNetmask(prefixLength);
-                }
-            }
-        } catch (Exception e) {
-            logger.warn("Could not calculate netmask for {}", netInterface.getName(), e);
-        }
-        return "255.255.255.0"; // Valeur par défaut
-    }
-
-    /**
-     * Convertit une longueur de préfixe en masque de sous-réseau
-     * Exemple: 24 => 255.255.255.0
-     */
-    private String prefixLengthToNetmask(short prefixLength) {
-        int mask = 0xffffffff << (32 - prefixLength);
-        return String.format("%d.%d.%d.%d",
-                (mask >> 24) & 0xff,
-                (mask >> 16) & 0xff,
-                (mask >> 8) & 0xff,
-                mask & 0xff
-        );
-    }
-
-    /**
-     * Vérifie si une interface réseau existe et est valide
+     * Check if a specific interface exists and is valid.
+     * @param adapter the network interface you want to check.
+     * @return whether the conditions are true or false.
      */
     public boolean isAdapterValid(NetworkInterfaceCustom adapter) {
         if (adapter == null) {
             return false;
         }
-
         try {
             NetworkInterface netInterface = NetworkInterface.getByName(adapter.getName());
             return netInterface != null && netInterface.isUp() && !netInterface.isLoopback();
