@@ -7,7 +7,7 @@ import com.rover.ui.MainWindow;
 import javax.swing.*;
 
 /**
- * Point d'entrée de l'application
+ * Entrypoint of the program
  */
 public class Main {
 
