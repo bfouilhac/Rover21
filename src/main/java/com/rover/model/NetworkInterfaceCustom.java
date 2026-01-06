@@ -1,7 +1,6 @@
 package com.rover.model;
 
 import java.util.Objects;
-import
 
 /**
  * Customized class representing a network interface.
@@ -76,7 +75,7 @@ public class NetworkInterfaceCustom {
      * @see String#matches(String)
      */
     private boolean validateIPv4Address(String ipAddress) {
-        return ipAddress.matches("^((0|1\\d?\\d?|2[0-4]?\\d?|25[0-5]?|[3-9]\\d?)\\.){3}(0|1\\d?\\d?|2[0-4]?\\d?|25[0-5]?|[3-9]\\d?)$")
+        return ipAddress.matches("^((0|1\\d?\\d?|2[0-4]?\\d?|25[0-5]?|[3-9]\\d?)\\.){3}(0|1\\d?\\d?|2[0-4]?\\d?|25[0-5]?|[3-9]\\d?)$");
     }
 
     @Override
