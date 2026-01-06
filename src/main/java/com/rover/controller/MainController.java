@@ -12,8 +12,9 @@ import javax.swing.*;
 import java.util.List;
 
 /**
- * Contrôleur principal de l'application Rover21
- * Coordonne les interactions entre la view (MainWindow) et les services
+ * Main controller for the Rover21 application.
+ * Coordinates interactions between the view (MainWindow) and services.
+ * Written by Benjamin FOUILHAC ADM21 in January-February 2026.
  */
 public class MainController implements MainWindow.UIEventListener {
 
@@ -24,21 +25,25 @@ public class MainController implements MainWindow.UIEventListener {
     private final PlanetDiscoveryService discoveryService;
 
     /**
-     * Constructeur du contrôleur
-     * @param view La fenêtre principale
+     * Constructor, initialize attributes and set the listener for the interactions.
+     * @param view the main page that contains all the information and graphics elements.
+     * @see MainWindow
      */
     public MainController(MainWindow view) {
         this.view = view;
         this.adapterService = new NetworkAdapterService();
         this.discoveryService = new PlanetDiscoveryService();
 
-        view.setEventListener(this); // Enregistrer ce contrôleur comme listener des événements UI
+        view.setEventListener(this); // Register this controller as a listener for UI events
 
         logger.info("MainController initialized");
     }
 
     /**
-     * Initialise l'application (charge les adaptateurs réseau)
+     * Initializes the application (loads network adapters).
+     * Needs to be cast at the start of the program.
+     * @implNote Could be coded in a better way than that...
+     * @see com.rover.Main#main(String[])
      */
     public void initialize() {
         logger.info("Initializing application...");
@@ -46,7 +51,11 @@ public class MainController implements MainWindow.UIEventListener {
     }
 
     /**
-     * Charge les interfaces réseau disponibles
+     * Use the service to load the various network interfaces,
+     * then call the UI to integrate them into the drop-down list.
+     * Finally, set the UI in "Ready" mode.
+     * @implNote might show an error pop-up if no adapters found.
+     * @see NetworkAdapterService#getAvailableAdapters()
      */
     private void loadNetworkAdapters() {
         try {
@@ -66,7 +75,6 @@ public class MainController implements MainWindow.UIEventListener {
             }
 
         } catch (Exception e) {
-            logger.error("Error loading network adapters", e);
             view.showError(
                     "Error Loading Adapters",
                     "An error occurred while scanning network adapters:\n" + e.getMessage()
@@ -75,10 +83,12 @@ public class MainController implements MainWindow.UIEventListener {
     }
 
     /**
-     * Méthode override qui permet de gérer l'interaction avec le bouton "Discover".
-     * Vérifie que l'interface choisie est valide : adresse IP, non-nulle, pas loopback.
-     * Lance les opérations dans un SwingWorker
-     * @param selectedAdapter l'interface choisie pour faire la découverte des produits PLANET
+     * Override method that manages interaction with the "Discover" button.
+     * Checks that the selected interface is valid : IP address, non-null, not loopback address.
+     * Launches operations in a SwingWorker.
+     * @param selectedAdapter the interface selected for discovering PLANET products.
+     * @see SwingWorker
+     * @see NetworkInterfaceCustom
      */
     @Override
     public void onDiscoverClicked(NetworkInterfaceCustom selectedAdapter) {
@@ -116,7 +126,7 @@ public class MainController implements MainWindow.UIEventListener {
                     view.setScanningMode(false);
                     view.showError(
                             "Discovery Error",
-                            "An error occurred during network discovery:\n" + e.getMessage()
+                            "An error occurred during network discovery :\n" + e.getMessage()
                     );
                     view.setStatusMessage("Discovery failed");
                 }
@@ -125,6 +135,12 @@ public class MainController implements MainWindow.UIEventListener {
         worker.execute();
     }
 
+    /**
+     * Override method that manages the interaction with the "Update Device" button.
+     * @param device the current PLANET switch that will be updated.
+     * @implNote For the moment, this method is useless since this part has not been defined in the specifications.
+     * @see PlanetSwitchDevice
+     */
     @Override
     public void onUpdateDeviceClicked(PlanetSwitchDevice device) {
         logger.info("Update device clicked: {}", device.getDeviceName());
@@ -137,6 +153,12 @@ public class MainController implements MainWindow.UIEventListener {
         );
     }
 
+    /**
+     * Override method that manages the interaction with the "Update Multi" button.
+     * @param devices the current PLANET switchs that will be updated.
+     * @implNote For the moment, this method is useless since this part has not been defined in the specifications.
+     * @see PlanetSwitchDevice
+     */
     @Override
     public void onUpdateMultiClicked(List<PlanetSwitchDevice> devices) {
         logger.info("Update multi clicked: {} devices", devices.size());
@@ -151,6 +173,12 @@ public class MainController implements MainWindow.UIEventListener {
         view.showInfo("Update Multiple Devices", message.toString());
     }
 
+    /**
+     * Override method that manages the interaction with the "Update All" button.
+     * @param devices all the PLANET switchs that has were found.
+     * @implNote For the moment, this method is useless since this part has not been defined in the specifications.
+     * @see PlanetSwitchDevice
+     */
     @Override
     public void onUpdateAllClicked(List<PlanetSwitchDevice> devices) {
         logger.info("Update all clicked: {} devices", devices.size());
@@ -162,6 +190,12 @@ public class MainController implements MainWindow.UIEventListener {
         );
     }
 
+    /**
+     * Override method that manages the interaction with the "Connect to Device" button.
+     * @param device The device that we want to be connected to
+     * @implNote For the moment, this method is useless since this part has not been defined in the specifications.
+     * @see PlanetSwitchDevice
+     */
     @Override
     public void onConnectToDeviceClicked(PlanetSwitchDevice device) {
         logger.info("Connect to device clicked: {}", device.getDeviceName());
@@ -175,6 +209,12 @@ public class MainController implements MainWindow.UIEventListener {
         );
     }
 
+    /**
+     * Override method that manages the interaction with the "Export to CSV" option.
+     * @param devices The list of devices we want in the CSV file
+     * @implNote For the moment, this method is useless since this part has not been defined in the specifications.
+     * @see PlanetSwitchDevice
+     */
     @Override
     public void onExportClicked(List<PlanetSwitchDevice> devices) {
         logger.info("Export clicked: {} devices", devices.size());
@@ -186,6 +226,10 @@ public class MainController implements MainWindow.UIEventListener {
         );
     }
 
+    /**
+     * Allows you to clear the device table data and reset the application to “Ready” status.
+     * @see MainWindow#clearResults()
+     */
     @Override
     public void onClearResultsClicked() {
         logger.info("Clear results clicked");

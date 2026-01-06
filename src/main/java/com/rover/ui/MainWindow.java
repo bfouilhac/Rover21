@@ -2,6 +2,8 @@ package com.rover.ui;
 
 import com.rover.model.NetworkInterfaceCustom;
 import com.rover.model.PlanetSwitchDevice;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
@@ -26,6 +28,7 @@ public class MainWindow extends JFrame {
     private static final Font MODERN_FONT_BOLD = new Font("Segoe UI", Font.PLAIN, 13);
     private static final Font TABLE_FONT = new Font("Segoe UI", Font.PLAIN, 12);
     private static final Font HEADER_FONT = new Font("Segoe UI", Font.PLAIN, 12);
+    private static final Logger logger = LoggerFactory.getLogger(MainWindow.class);
 
     // Composants graphiques
     private JComboBox<NetworkInterfaceCustom> adapterComboBox;
@@ -420,6 +423,7 @@ public class MainWindow extends JFrame {
                 title,
                 JOptionPane.ERROR_MESSAGE
         );
+        logger.error(message);
     }
 
     /**
@@ -530,6 +534,10 @@ public class MainWindow extends JFrame {
         }
     }
 
+    /**
+     * Permet de récupérer les données des colonnes sélectionnées
+     * @return la liste des objets des lignes sélectionnées
+     */
     private List<PlanetSwitchDevice> getSelectedDevices() {
         List<PlanetSwitchDevice> selected = new ArrayList<>();
         int[] selectedRows = devicesTable.getSelectedRows();

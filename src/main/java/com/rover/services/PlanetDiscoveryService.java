@@ -41,14 +41,12 @@ public class PlanetDiscoveryService {
      * @return Liste des switchs PLANET découverts
      */
     public List<PlanetSwitchDevice> discoverDevices(String localAddress) {
-        logger.info("Starting PLANET device discovery on interface: {}", localAddress);
 
+        logger.info("Starting PLANET device discovery on interface: {}", localAddress);
         List<PlanetSwitchDevice> devices = new ArrayList<>();
         Set<String> discoveredMacs = new HashSet<>(); // Pour éviter les doublons
-
         DatagramSocket sendSocket = null;
         DatagramSocket receiveSocket = null;
-
         try {
             try {
                 receiveSocket = new DatagramSocket(RESPONSE_PORT); // Créer un socket pour recevoir les réponses sur le port 62631
@@ -65,7 +63,7 @@ public class PlanetDiscoveryService {
             }
 
             // Créer un socket pour ENVOYER la commande (port libre)
-            sendSocket = new DatagramSocket();
+            sendSocket = new DatagramSocket(new InetSocketAddress(InetAddress.getByName(localAddress), DISCOVERY_PORT));
             sendSocket.setBroadcast(true);
             logger.info("Send socket created on port: {}", sendSocket.getLocalPort());
 
@@ -150,49 +148,34 @@ public class PlanetDiscoveryService {
                 logger.warn("Invalid magic header: '{}' (expected 'PLANET')", header);
                 return null;
             }
-
             logger.debug("Valid PLANET packet detected, parsing in progress ...");
-
             PlanetSwitchDevice device = new PlanetSwitchDevice();
 
             if (length < 16) { // Extraire la MAC address (offset 10-15)
                 logger.warn("Packet too small to contain MAC address");
                 return null;
             }
-
-            String macAddress = String.format("%02X:%02X:%02X:%02X:%02X:%02X",
-                    data[10] & 0xFF, data[11] & 0xFF, data[12] & 0xFF,
-                    data[13] & 0xFF, data[14] & 0xFF, data[15] & 0xFF
-            ); // Pattern pour les adresses MAC
+            String macAddress = String.format("%02X:%02X:%02X:%02X:%02X:%02X", data[10] & 0xFF, data[11] & 0xFF, data[12] & 0xFF, data[13] & 0xFF, data[14] & 0xFF, data[15] & 0xFF); // Pattern pour les adresses MAC
             device.setMacAddress(macAddress);
-
             logger.debug("MAC Address: {}", macAddress);
 
             if (length < 24) { // Extraire l'adresse IP (offset 20-23)
                 logger.warn("Packet too small to contain IP address");
                 return null;
             }
-
-            String ipAddress = String.format("%d.%d.%d.%d",
-                    data[20] & 0xFF, data[21] & 0xFF, data[22] & 0xFF, data[23] & 0xFF
-            );
+            String ipAddress = String.format("%d.%d.%d.%d", data[20] & 0xFF, data[21] & 0xFF, data[22] & 0xFF, data[23] & 0xFF);
             device.setIpAddress(ipAddress);
             device.setDeviceIp(ipAddress);
-
             logger.debug("IP Address: {}", ipAddress);
 
             if (length >= 28) { // Extraire le netmask (offset 24-27)
-                String netmask = String.format("%d.%d.%d.%d",
-                        data[24] & 0xFF, data[25] & 0xFF, data[26] & 0xFF, data[27] & 0xFF
-                );
+                String netmask = String.format("%d.%d.%d.%d", data[24] & 0xFF, data[25] & 0xFF, data[26] & 0xFF, data[27] & 0xFF);
                 device.setNetMask(netmask);
                 logger.debug("Netmask: {}", netmask);
             }
 
             if (length >= 32) { // Extraire la gateway (offset 28-31)
-                String gateway = String.format("%d.%d.%d.%d",
-                        data[28] & 0xFF, data[29] & 0xFF, data[30] & 0xFF, data[31] & 0xFF
-                );
+                String gateway = String.format("%d.%d.%d.%d", data[28] & 0xFF, data[29] & 0xFF, data[30] & 0xFF, data[31] & 0xFF);
                 device.setGateway(gateway);
                 logger.debug("Gateway: {}", gateway);
             }
