@@ -165,6 +165,7 @@ public class PlanetDiscoveryService {
                     data[13] & 0xFF, data[14] & 0xFF, data[15] & 0xFF
             ); // Pattern pour les adresses MAC
             device.setMacAddress(macAddress);
+
             logger.debug("MAC Address: {}", macAddress);
 
             if (length < 24) { // Extraire l'adresse IP (offset 20-23)
@@ -177,6 +178,7 @@ public class PlanetDiscoveryService {
             );
             device.setIpAddress(ipAddress);
             device.setDeviceIp(ipAddress);
+
             logger.debug("IP Address: {}", ipAddress);
 
             if (length >= 28) { // Extraire le netmask (offset 24-27)

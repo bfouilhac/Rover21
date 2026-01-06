@@ -10,6 +10,7 @@ import javax.swing.table.DefaultTableModel;
 import javax.swing.table.JTableHeader;
 import java.awt.*;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -384,7 +385,6 @@ public class MainWindow extends JFrame {
                     device.getDescription()
             });
         }
-
         updateDeviceCount();
         updateButtonStates();
     }
@@ -536,10 +536,9 @@ public class MainWindow extends JFrame {
 
         for (int row : selectedRows) {
             if (row >= 0 && row < discoveredDevices.size()) {
-                selected.add(discoveredDevices.get(row));
+                selected.add(discoveredDevices.get(devicesTable.convertRowIndexToModel(row)));
             }
         }
-
         return selected;
     }
 
