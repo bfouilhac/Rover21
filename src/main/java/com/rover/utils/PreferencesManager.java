@@ -20,8 +20,6 @@ public class PreferencesManager {
     private static final String LANGUAGE_KEY = "language";
     private static final String WINDOW_WIDTH_KEY = "window.width";
     private static final String WINDOW_HEIGHT_KEY = "window.height";
-    private static final String WINDOW_X_KEY = "window.x";
-    private static final String WINDOW_Y_KEY = "window.y";
 
     /**
      * Saves the selected language preference.
@@ -55,7 +53,7 @@ public class PreferencesManager {
             prefs.putInt(WINDOW_WIDTH_KEY, width);
             prefs.putInt(WINDOW_HEIGHT_KEY, height);
             prefs.flush();
-            logger.debug("Window size saved: {}x{}", width, height);
+            logger.debug("Window size saved : {}x{}", width, height);
         } catch (BackingStoreException e) {
             logger.error("Failed to save window size", e);
         }
@@ -77,53 +75,5 @@ public class PreferencesManager {
      */
     public static int getWindowHeight(int defaultHeight) {
         return prefs.getInt(WINDOW_HEIGHT_KEY, defaultHeight);
-    }
-
-    /**
-     * Saves the window position.
-     * @param x the window x coordinate
-     * @param y the window y coordinate
-     */
-    public static void saveWindowPosition(int x, int y) {
-        try {
-            prefs.putInt(WINDOW_X_KEY, x);
-            prefs.putInt(WINDOW_Y_KEY, y);
-            prefs.flush();
-            logger.debug("Window position saved: ({}, {})", x, y);
-        } catch (BackingStoreException e) {
-            logger.error("Failed to save window position", e);
-        }
-    }
-
-    /**
-     * Gets the saved window x position.
-     * @param defaultX the default x position if not saved
-     * @return the saved window x position
-     */
-    public static int getWindowX(int defaultX) {
-        return prefs.getInt(WINDOW_X_KEY, defaultX);
-    }
-
-    /**
-     * Gets the saved window y position.
-     * @param defaultY the default y position if not saved
-     * @return the saved window y position
-     */
-    public static int getWindowY(int defaultY) {
-        return prefs.getInt(WINDOW_Y_KEY, defaultY);
-    }
-
-    /**
-     * Clears all saved preferences.
-     * Useful for debugging or reset functionality.
-     */
-    public static void clearAll() {
-        try {
-            prefs.clear();
-            prefs.flush();
-            logger.info("All preferences cleared");
-        } catch (BackingStoreException e) {
-            logger.error("Failed to clear preferences", e);
-        }
     }
 }

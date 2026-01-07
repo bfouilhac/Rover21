@@ -5,6 +5,7 @@ import com.rover.model.PlanetSwitchDevice;
 import com.rover.services.NetworkAdapterService;
 import com.rover.services.PlanetDiscoveryService;
 import com.rover.ui.MainWindow;
+import com.rover.utils.LanguageManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,6 +20,9 @@ import java.util.List;
 public class MainController implements MainWindow.UIEventListener {
 
     private static final Logger logger = LoggerFactory.getLogger(MainController.class);
+
+    // Language manager for translations
+    private final LanguageManager lang = LanguageManager.getInstance();
 
     private final MainWindow view;
     private final NetworkAdapterService adapterService;
@@ -63,21 +67,20 @@ public class MainController implements MainWindow.UIEventListener {
 
             if (adapters.isEmpty()) {
                 view.showError(
-                        "No Network Adapters Found",
-                        "No valid network adapters with IPv4 addresses were found.\n" +
-                                "Please check your network configuration."
+                        lang.get("error.no_adapters_title"),
+                        lang.get("error.no_adapters_message")
                 );
-                view.setStatusMessage("No network adapters found.");
+                view.setStatusMessage(lang.get("status.no_adapters"));
             } else {
                 view.loadNetworkInterfaceCustoms(adapters);
-                view.setStatusMessage("Ready - " + adapters.size() + " adapter(s) available.");
+                view.setStatusMessage(lang.get("status.ready_adapters", adapters.size()));
                 logger.info("Loaded {} network adapter(s)", adapters.size());
             }
 
         } catch (Exception e) {
             view.showError(
-                    "Error Loading Adapters",
-                    "An error occurred while scanning network adapters:\n" + e.getMessage()
+                    lang.get("error.loading_adapters_title"),
+                    lang.get("error.loading_adapters_message", e.getMessage())
             );
         }
     }
@@ -96,13 +99,12 @@ public class MainController implements MainWindow.UIEventListener {
         logger.info("Discover clicked for adapter: {}", selectedAdapter.getName());
         if (!adapterService.isAdapterValid(selectedAdapter)) {
             view.showError(
-                    "Invalid Adapter",
-                    "The selected network adapter is not valid or not available."
+                    lang.get("error.invalid_adapter_title"),
+                    lang.get("error.invalid_adapter_message")
             );
             return;
         }
         view.setScanningMode(true);
-        view.setStatusMessage("Scanning network on " + selectedAdapter.getIpAddress() + "...");
         SwingWorker<List<PlanetSwitchDevice>, Integer> worker = new SwingWorker<>() {
             @Override
             protected List<PlanetSwitchDevice> doInBackground(){
@@ -132,9 +134,9 @@ public class MainController implements MainWindow.UIEventListener {
                 if (!chunks.isEmpty()) {
                     int secondsRemaining = chunks.get(chunks.size() - 1);
                     if (secondsRemaining > 1) {
-                        view.setStatusMessage("Scanning in progress, " + secondsRemaining + " seconds remaining.");
+                        view.setStatusMessage(lang.get("status.scanning_progress", secondsRemaining));
                     } else {
-                        view.setStatusMessage("Scanning in progress, " + secondsRemaining + " second remaining.");
+                        view.setStatusMessage(lang.get("status.scanning_progress_singular", secondsRemaining));
                     }
                 }
             }
@@ -147,9 +149,9 @@ public class MainController implements MainWindow.UIEventListener {
                     view.setScanningMode(false);
 
                     if (devices.isEmpty()) {
-                        view.setStatusMessage("Scan completed - No PLANET switches found.");
+                        view.setStatusMessage(lang.get("status.completed_none"));
                     } else {
-                        view.setStatusMessage("Scan completed - " + devices.size() + " device(s) found.");
+                        view.setStatusMessage(lang.get("status.completed_found", devices.size()));
                     }
 
                     logger.info("Discovery completed: {} device(s) found", devices.size());
@@ -157,8 +159,10 @@ public class MainController implements MainWindow.UIEventListener {
                 } catch (Exception e) {
                     logger.error("Error during discovery", e);
                     view.setScanningMode(false);
-                    view.showError("Discovery Error", "An error occurred during network discovery:\n" + e.getMessage());
-                    view.setStatusMessage("Discovery failed.");
+                    view.showError(
+                            lang.get("error.discovery_title"),
+                            lang.get("error.discovery_message", e.getMessage()));
+                    view.setStatusMessage(lang.get("status.failed"));
                 }
             }
         };
@@ -264,6 +268,6 @@ public class MainController implements MainWindow.UIEventListener {
     public void onClearResultsClicked() {
         logger.info("Clear results clicked.");
         view.clearResults();
-        view.setStatusMessage("Results cleared - Ready to scan.");
+        view.setStatusMessage(lang.get("status.cleared"));
     }
 }

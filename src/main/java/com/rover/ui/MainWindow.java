@@ -16,6 +16,8 @@ import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.rover.utils.PreferencesManager.*;
+
 /**
  * Main window of Rover21 using Java Swing and FlatLightLaf.
  * Now supports internationalization (i18n) with English and French languages.
@@ -40,7 +42,6 @@ public class MainWindow extends JFrame {
     private JLabel deviceCountLabel;
     private JTable devicesTable;
     private DefaultTableModel tableModel;
-    private TableRowSorter<DefaultTableModel> tableSorter;
 
     // Actions buttons
     private JButton updateDeviceBtn;
@@ -48,9 +49,6 @@ public class MainWindow extends JFrame {
     private JButton updateAllBtn;
     private JButton connectBtn;
     private JButton discoverButton;
-
-    // Menu items that need to be updated on language change
-    private JLabel adapterLabel;
 
     // List of network interfaces
     private List<PlanetSwitchDevice> discoveredDevices;
@@ -121,8 +119,7 @@ public class MainWindow extends JFrame {
      */
     private void initializeFrame() {
         setTitle(lang.get("window.title"));
-        setSize(1200, 700);
-        setMinimumSize(new Dimension(1000, 600));
+        setSize(getWindowWidth(1200), getWindowHeight(700));
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
     }
@@ -138,7 +135,10 @@ public class MainWindow extends JFrame {
         JMenuItem exportItem = new JMenuItem(lang.get("menu.export"));
         exportItem.addActionListener(e -> handleExport());
         JMenuItem quitItem = new JMenuItem(lang.get("menu.quit"));
-        quitItem.addActionListener(e -> System.exit(0));
+        quitItem.addActionListener(e -> {
+            saveWindowSize(this.getWidth(),  this.getHeight());
+            System.exit(0);
+        });
 
         fileMenu.add(exportItem);
         fileMenu.addSeparator();
@@ -204,7 +204,8 @@ public class MainWindow extends JFrame {
         // Left panel with label and combobox
         JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 0));
 
-        adapterLabel = new JLabel(lang.get("toolbar.network_interface"));
+        // Menu items that need to be updated on language change
+        JLabel adapterLabel = new JLabel(lang.get("toolbar.network_interface"));
         adapterLabel.setFont(MODERN_FONT);
 
         adapterComboBox = new JComboBox<>();
@@ -306,7 +307,7 @@ public class MainWindow extends JFrame {
         devicesTable.setIntercellSpacing(new Dimension(1, 1));
 
         // Enable column sorting
-        tableSorter = new TableRowSorter<>(tableModel);
+        TableRowSorter<DefaultTableModel> tableSorter = new TableRowSorter<>(tableModel);
         devicesTable.setRowSorter(tableSorter);
 
         // Center text in cells
