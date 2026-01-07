@@ -15,7 +15,7 @@ public class Main {
         try {
             UIManager.setLookAndFeel(new FlatLightLaf());  // Appliquer le thème FlatLaf pour l'UI
         } catch (Exception e) {
-            System.err.println("Failed to initialize FlatLaf theme");
+            System.err.println("Failed to initialize FlatLaf theme.");
             e.printStackTrace();
         }
 

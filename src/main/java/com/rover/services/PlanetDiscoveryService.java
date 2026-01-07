@@ -1,5 +1,6 @@
 package com.rover.services;
 
+import com.rover.model.NetworkInterfaceCustom;
 import com.rover.model.PlanetSwitchDevice;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -12,67 +13,70 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Service de découverte des switchs PLANET via UDP
- * Utilise le protocole reverse-engineered du logiciel PLANET Smart Discovery
+ * Service used to perform the discovery on a specific network using UDP broadcast and a magic discovery packet to find PLANET switches.
+ * @author Benjamin FOUILHAC, ADM21 in January-February 2026.
  */
 public class PlanetDiscoveryService {
 
     private static final Logger logger = LoggerFactory.getLogger(PlanetDiscoveryService.class);
 
-    // Constantes du protocole PLANET
-    private static final int DISCOVERY_PORT = 62630; // Port pour envoyer la requête
-    private static final int RESPONSE_PORT = 62631; // Port pour recevoir les réponses
-    private static final int SOCKET_TIMEOUT = 5000; // Timeout de 5 secondes
-    private static final int MAX_PACKET_SIZE = 1024; // Taille max d'un paquet UDP
+    private static final int DISCOVERY_PORT = 62630; // The port that the switch listens on for discovery.
+    private static final int RESPONSE_PORT = 62631; // The port to which the switch sends its response.
+    private static final int SOCKET_TIMEOUT = 5000; // 5s of discovery, allowing time for all devices to answer.
+    private static final int MAX_PACKET_SIZE = 1024;
 
-    // Magic bytes pour la découverte (16 bytes)
-    // "PLANETut" + 0x0016 + broadcast MAC (FF FF FF FF FF FF)
+    // Magic bytes for the discovery (16 bytes)
+    // "PLANETut" + 0x0016 + broadcast MAC (FF FF FF FF FF FF = 255.255.255.255)
     private static final byte[] DISCOVERY_PACKET = {
             0x50, 0x4c, 0x41, 0x4e, 0x45, 0x54, 0x75, 0x74,  // "PLANETut"
-            0x00, 0x16,                                        // Length/Type
-            (byte) 0xff, (byte) 0xff, (byte) 0xff,            // Broadcast MAC
-            (byte) 0xff, (byte) 0xff, (byte) 0xff             // Broadcast MAC
+            0x00, 0x16,
+            (byte) 0xff, (byte) 0xff, (byte) 0xff, // Broadcast MAC
+            (byte) 0xff, (byte) 0xff, (byte) 0xff // Broadcast MAC
     };
 
     /**
-     * Découvre tous les switchs PLANET sur le réseau
-     *
-     * @param localAddress L'adresse IP locale de l'interface réseau à utiliser
-     * @return Liste des switchs PLANET découverts
+     * Getter
+     * @return the current limit time used for the discovery.
+     * @see com.rover.controller.MainController#onDiscoverClicked(NetworkInterfaceCustom)
+     */
+    public int getTimeout() {return SOCKET_TIMEOUT;}
+
+    /**
+     * Sends the magic packet by broadcast and waits for the device's response.
+     * @param localAddress IPv4 Address of the network interface from which the magic packet will be sent.
+     * @return a list of all the PlanetSwitchDevices found.
+     * @see PlanetSwitchDevice
      */
     public List<PlanetSwitchDevice> discoverDevices(String localAddress) {
 
-        logger.info("Starting PLANET device discovery on interface: {}", localAddress);
+        logger.info("Starting PLANET device discovery on interface : {}", localAddress);
         List<PlanetSwitchDevice> devices = new ArrayList<>();
-        Set<String> discoveredMacs = new HashSet<>(); // Pour éviter les doublons
-        DatagramSocket sendSocket = null;
-        DatagramSocket receiveSocket = null;
+        Set<String> discoveredMacs = new HashSet<>(); // To avoid duplicates
+        DatagramSocket sendSocket = null; // init
+        DatagramSocket receiveSocket = null; // init
         try {
             try {
-                receiveSocket = new DatagramSocket(RESPONSE_PORT); // Créer un socket pour recevoir les réponses sur le port 62631
-                receiveSocket.setSoTimeout(SOCKET_TIMEOUT); // On met un timeout également pour éviter d'attendre indéfiniment les réponses
+                receiveSocket = new DatagramSocket(RESPONSE_PORT); // Socket listening to port 62631, where the switches will send their answer
+                receiveSocket.setSoTimeout(SOCKET_TIMEOUT); // Timeout so we can avoid waiting too long for answers
                 logger.info("Receive socket setup to port : {}", RESPONSE_PORT);
             } catch (SocketException e) {
                 logger.error("Could not bind to port {} : {}", RESPONSE_PORT, e.getMessage());
 
-                receiveSocket = new DatagramSocket(null);
-                receiveSocket.setReuseAddress(true); // On essaye de réattribuer en cas d'échec
+                receiveSocket = new DatagramSocket(null); // Retrying without mentioning any port
+                receiveSocket.setReuseAddress(true);
                 receiveSocket.bind(new InetSocketAddress(RESPONSE_PORT));
-                receiveSocket.setSoTimeout(SOCKET_TIMEOUT);
+                receiveSocket.setSoTimeout(SOCKET_TIMEOUT); // Setting the timeout so we can catch SocketTimeoutException
                 logger.info("Receive socket bound to port {} with SO_REUSEADDR", RESPONSE_PORT);
             }
 
-            // Créer un socket pour ENVOYER la commande (port libre)
             sendSocket = new DatagramSocket(new InetSocketAddress(InetAddress.getByName(localAddress), DISCOVERY_PORT));
-            sendSocket.setBroadcast(true);
-            logger.info("Send socket created on port: {}", sendSocket.getLocalPort());
+            sendSocket.setBroadcast(true); // Setting broadcast ON so it will be sent to every device on the same network
+            logger.info("Send socket created on port : {}", sendSocket.getLocalPort());
 
-            sendDiscoveryPacket(sendSocket); // Envoyer le paquet de découverte en broadcast : on l'envoie sur le port 62630 des appareils
+            sendDiscoveryPacket(sendSocket); // Sending the magic packet by the sending socket
 
-            long startTime = System.currentTimeMillis(); // Écouter les réponses pendant le timeout
-
+            long startTime = System.currentTimeMillis(); // Starting the timer for the timeout
             logger.info("Listening for responses on port {} for {} ms...", RESPONSE_PORT, SOCKET_TIMEOUT);
-
             while (System.currentTimeMillis() - startTime < SOCKET_TIMEOUT) {
                 try {
                     byte[] buffer = new byte[MAX_PACKET_SIZE];
@@ -89,9 +93,8 @@ public class PlanetDiscoveryService {
                             logger.debug("Device already discovered (duplicate): {}", device.getMacAddress());
                         }
                     } else {
-                        logger.warn("✗ Failed to parse device from packet");
+                        logger.warn("Failed to parse device from packet.");
                     }
-
                 } catch (SocketTimeoutException e) {
                     logger.error("Socket timeout reached after {} ms, ending discovery", System.currentTimeMillis() - startTime); // Timeout atteint, sortir de la boucle
                     break;
@@ -99,31 +102,38 @@ public class PlanetDiscoveryService {
             }
         } catch (IOException e) {
             logger.error("Error during device discovery", e);
-        } finally { // Enfin, on coupe les connexions
+        } finally { // We can finally close connections
             if (sendSocket != null && !sendSocket.isClosed()) {
                 sendSocket.close();
-                logger.debug("Send socket closed");
+                logger.debug("Send socket closed.");
             }
             if (receiveSocket != null && !receiveSocket.isClosed()) {
                 receiveSocket.close();
-                logger.info("Receive socket closed");
+                logger.info("Receive socket closed.");
             }
         }
-
         logger.info("Discovery COMPLETE. Found {} PLANET device(s)", devices.size());
         return devices;
     }
 
     /**
-     * Envoie le paquet de découverte en broadcast
+     * Send the magic packet by broadcast.
+     * @param socket the sending Datagram Socket.
+     * @see DatagramSocket
+     * @see DatagramPacket
      */
     private void sendDiscoveryPacket(DatagramSocket socket) throws IOException {
         socket.send(new DatagramPacket(DISCOVERY_PACKET, DISCOVERY_PACKET.length, InetAddress.getByName("255.255.255.255"), DISCOVERY_PORT));
-        logger.debug("Discovery packet sent to 255.255.255.255 : {}", DISCOVERY_PORT);
+        logger.debug("Discovery packet sent : {}", DISCOVERY_PORT);
     }
 
     /**
-     * Parse la réponse d'un switch PLANET pour récupérer les informations essentielles
+     * Parse the response to get information about a product.
+     * Checking several conditions before analyzing the bits such as the length (>32, the header...).
+     * @param packet the DatagramPacket containing the response from a PLANET switch.
+     * @return an instance of a PlanetSwitchDevice, created with the data found in the packets.
+     * @see DatagramPacket
+     * @see PlanetSwitchDevice
      */
     private PlanetSwitchDevice parseResponse(DatagramPacket packet) {
         try {
@@ -133,13 +143,8 @@ public class PlanetDiscoveryService {
             logger.debug("Parsing response packet: {} bytes from {}",
                     length, packet.getAddress().getHostAddress());
 
-            if (length < 32) { // Vérifier la taille minimale
+            if (length < 32) { // Check the size
                 logger.warn("Received packet too short: {} bytes (minimum 32 required)", length);
-                return null;
-            }
-
-            if (length < 8) { // Vérifier le magic header "PLANETut"
-                logger.warn("Packet too small to contain magic header");
                 return null;
             }
 
@@ -151,44 +156,32 @@ public class PlanetDiscoveryService {
             logger.debug("Valid PLANET packet detected, parsing in progress ...");
             PlanetSwitchDevice device = new PlanetSwitchDevice();
 
-            if (length < 16) { // Extraire la MAC address (offset 10-15)
-                logger.warn("Packet too small to contain MAC address");
-                return null;
-            }
             String macAddress = String.format("%02X:%02X:%02X:%02X:%02X:%02X", data[10] & 0xFF, data[11] & 0xFF, data[12] & 0xFF, data[13] & 0xFF, data[14] & 0xFF, data[15] & 0xFF); // Pattern pour les adresses MAC
             device.setMacAddress(macAddress);
             logger.debug("MAC Address: {}", macAddress);
 
-            if (length < 24) { // Extraire l'adresse IP (offset 20-23)
-                logger.warn("Packet too small to contain IP address");
-                return null;
-            }
             String ipAddress = String.format("%d.%d.%d.%d", data[20] & 0xFF, data[21] & 0xFF, data[22] & 0xFF, data[23] & 0xFF);
             device.setIpAddress(ipAddress);
             device.setDeviceIp(ipAddress);
             logger.debug("IP Address: {}", ipAddress);
 
-            if (length >= 28) { // Extraire le netmask (offset 24-27)
-                String netmask = String.format("%d.%d.%d.%d", data[24] & 0xFF, data[25] & 0xFF, data[26] & 0xFF, data[27] & 0xFF);
-                device.setNetMask(netmask);
-                logger.debug("Netmask: {}", netmask);
-            }
+            String netmask = String.format("%d.%d.%d.%d", data[24] & 0xFF, data[25] & 0xFF, data[26] & 0xFF, data[27] & 0xFF);
+            device.setNetMask(netmask);
+            logger.debug("Netmask: {}", netmask);
 
-            if (length >= 32) { // Extraire la gateway (offset 28-31)
-                String gateway = String.format("%d.%d.%d.%d", data[28] & 0xFF, data[29] & 0xFF, data[30] & 0xFF, data[31] & 0xFF);
-                device.setGateway(gateway);
-                logger.debug("Gateway: {}", gateway);
-            }
+            String gateway = String.format("%d.%d.%d.%d", data[28] & 0xFF, data[29] & 0xFF, data[30] & 0xFF, data[31] & 0xFF);
+            device.setGateway(gateway);
+            logger.debug("Gateway: {}", gateway);
 
-            // Extraire les informations textuelles (Device Name, Version, Description) souvent après 32 bits
+            // Extract context data (Device Name, firmware version, description)
             if (length > 32) {
                 parseDeviceInfo(data, length, device);
-            } else { // Valeurs par défaut si pas assez de données
+            } else { // Default values if not found, may be blank or invalid
                 device.setDeviceName("PLANET Switch");
                 device.setVersion("Unknown");
                 device.setDescription("PLANET Network Device");
             }
-            device.setOnline(true);
+            device.setOnline(true); // If the switch is found, then its online obviously
             return device;
         } catch (Exception e) {
             logger.error("Error parsing device response", e);

@@ -36,7 +36,7 @@ public class MainController implements MainWindow.UIEventListener {
 
         view.setEventListener(this); // Register this controller as a listener for UI events
 
-        logger.info("MainController initialized");
+        logger.info("MainController initialized.");
     }
 
     /**
@@ -67,10 +67,10 @@ public class MainController implements MainWindow.UIEventListener {
                         "No valid network adapters with IPv4 addresses were found.\n" +
                                 "Please check your network configuration."
                 );
-                view.setStatusMessage("No network adapters found");
+                view.setStatusMessage("No network adapters found.");
             } else {
                 view.loadNetworkInterfaceCustoms(adapters);
-                view.setStatusMessage("Ready - " + adapters.size() + " adapter(s) available");
+                view.setStatusMessage("Ready - " + adapters.size() + " adapter(s) available.");
                 logger.info("Loaded {} network adapter(s)", adapters.size());
             }
 
@@ -103,10 +103,40 @@ public class MainController implements MainWindow.UIEventListener {
         }
         view.setScanningMode(true);
         view.setStatusMessage("Scanning network on " + selectedAdapter.getIpAddress() + "...");
-        SwingWorker<List<PlanetSwitchDevice>, Void> worker = new SwingWorker<>() {
+        SwingWorker<List<PlanetSwitchDevice>, Integer> worker = new SwingWorker<>() {
             @Override
-            protected List<PlanetSwitchDevice> doInBackground() {
-                return discoveryService.discoverDevices(selectedAdapter.getIpAddress()); // On lance la découverte
+            protected List<PlanetSwitchDevice> doInBackground(){
+                Thread countdownThread = new Thread(() -> {
+                    for (int i = discoveryService.getTimeout() / 1000; i >= 0; i--) {
+                        publish(i); // Send the value to process()
+                        try {
+                            Thread.sleep(1000); // Wait one second between each (so we can get 5 ... 4 ... 3 ...)
+                        } catch (InterruptedException e) {
+                            break;
+                        }
+                    }
+                });
+                countdownThread.start();
+                List<PlanetSwitchDevice> devices = discoveryService.discoverDevices(selectedAdapter.getIpAddress());
+                countdownThread.interrupt();
+                return devices;
+            }
+
+            /**
+             * This method is call on the EDT (UI thread).
+             * It receives the data sent by publish()
+             * @param chunks intermediate results to process
+             */
+            @Override
+            protected void process(List<Integer> chunks) {
+                if (!chunks.isEmpty()) {
+                    int secondsRemaining = chunks.get(chunks.size() - 1);
+                    if (secondsRemaining > 1) {
+                        view.setStatusMessage("Scanning in progress, " + secondsRemaining + " seconds remaining.");
+                    } else {
+                        view.setStatusMessage("Scanning in progress, " + secondsRemaining + " second remaining.");
+                    }
+                }
             }
 
             @Override
@@ -115,20 +145,20 @@ public class MainController implements MainWindow.UIEventListener {
                     List<PlanetSwitchDevice> devices = get();
                     view.displayDevices(devices);
                     view.setScanningMode(false);
+
                     if (devices.isEmpty()) {
-                        view.setStatusMessage("Scan completed - No PLANET switches found");
+                        view.setStatusMessage("Scan completed - No PLANET switches found.");
                     } else {
-                        view.setStatusMessage("Scan completed - " + devices.size() + " device(s) found");
+                        view.setStatusMessage("Scan completed - " + devices.size() + " device(s) found.");
                     }
+
                     logger.info("Discovery completed: {} device(s) found", devices.size());
+
                 } catch (Exception e) {
                     logger.error("Error during discovery", e);
                     view.setScanningMode(false);
-                    view.showError(
-                            "Discovery Error",
-                            "An error occurred during network discovery :\n" + e.getMessage()
-                    );
-                    view.setStatusMessage("Discovery failed");
+                    view.showError("Discovery Error", "An error occurred during network discovery:\n" + e.getMessage());
+                    view.setStatusMessage("Discovery failed.");
                 }
             }
         };
@@ -163,12 +193,12 @@ public class MainController implements MainWindow.UIEventListener {
     public void onUpdateMultiClicked(List<PlanetSwitchDevice> devices) {
         logger.info("Update multi clicked: {} devices", devices.size());
         // TODO: Implémenter la mise à jour multiple
-        StringBuilder message = new StringBuilder("Updating " + devices.size() + " devices:\n\n");
+        StringBuilder message = new StringBuilder("Updating " + devices.size() + " devices :\n\n");
         for (PlanetSwitchDevice device : devices) {
             message.append("- ").append(device.getDeviceName())
                     .append(" (").append(device.getIpAddress()).append(")\n");
         }
-        message.append("\nThis feature will be implemented soon!");
+        message.append("\nThis feature will be implemented soon !");
 
         view.showInfo("Update Multiple Devices", message.toString());
     }
@@ -232,8 +262,8 @@ public class MainController implements MainWindow.UIEventListener {
      */
     @Override
     public void onClearResultsClicked() {
-        logger.info("Clear results clicked");
+        logger.info("Clear results clicked.");
         view.clearResults();
-        view.setStatusMessage("Results cleared - Ready to scan");
+        view.setStatusMessage("Results cleared - Ready to scan.");
     }
 }
