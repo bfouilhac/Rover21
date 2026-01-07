@@ -2,6 +2,7 @@ package com.rover.ui;
 
 import com.rover.model.NetworkInterfaceCustom;
 import com.rover.model.PlanetSwitchDevice;
+import com.rover.utils.LanguageManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -10,22 +11,27 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.JTableHeader;
+import javax.swing.table.TableRowSorter;
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Main window of Rover21 using Java Swing and FlatLightLaf.
+ * Now supports internationalization (i18n) with English and French languages.
  * @see <a href="https://docs.oracle.com/javase/8/docs/api/javax/swing/package-summary.html"> Java Swing </a>
  * @see <a href="https://www.formdev.com/flatlaf/"> FlatLaf</a>
  * @author Benjamin FOUILHAC, ADM21 in January-February 2026.
  */
 public class MainWindow extends JFrame {
 
-    // Modern font for the app using the Segoe UI
+    // Modern font for the app using Segoe UI
     private static final Font MODERN_FONT = new Font("Segoe UI", Font.PLAIN, 13);
     private static final Font TABLE_FONT = new Font("Segoe UI", Font.PLAIN, 12);
     private static final Logger logger = LoggerFactory.getLogger(MainWindow.class);
+
+    // Language manager for translations
+    private final LanguageManager lang = LanguageManager.getInstance();
 
     // UI elements
     private JComboBox<NetworkInterfaceCustom> adapterComboBox;
@@ -34,6 +40,7 @@ public class MainWindow extends JFrame {
     private JLabel deviceCountLabel;
     private JTable devicesTable;
     private DefaultTableModel tableModel;
+    private TableRowSorter<DefaultTableModel> tableSorter;
 
     // Actions buttons
     private JButton updateDeviceBtn;
@@ -42,8 +49,12 @@ public class MainWindow extends JFrame {
     private JButton connectBtn;
     private JButton discoverButton;
 
+    // Menu items that need to be updated on language change
+    private JLabel adapterLabel;
+
     // List of network interfaces
     private List<PlanetSwitchDevice> discoveredDevices;
+    private List<NetworkInterfaceCustom> availableAdapters;
 
     // Listener for UI events
     private UIEventListener eventListener;
@@ -67,31 +78,33 @@ public class MainWindow extends JFrame {
      */
     public MainWindow() {
         this.discoveredDevices = new ArrayList<>();
+        this.availableAdapters = new ArrayList<>();
 
         setUIFont();
-
         initializeFrame();
         createMenuBar();
         createToolbar();
         createCenterPanel();
         createBottomPanel();
 
-        // Centrer la fenêtre
+        // Center the window
         setLocationRelativeTo(null);
+
+        logger.info("MainWindow initialized with language: {}", lang.getCurrentLanguageCode());
     }
 
     /**
      * Sets the font for all the components.
      */
     private void setUIFont() {
-        UIManager.put("Button.font", MainWindow.MODERN_FONT);
-        UIManager.put("Label.font", MainWindow.MODERN_FONT);
-        UIManager.put("ComboBox.font", MainWindow.MODERN_FONT);
+        UIManager.put("Button.font", MODERN_FONT);
+        UIManager.put("Label.font", MODERN_FONT);
+        UIManager.put("ComboBox.font", MODERN_FONT);
         UIManager.put("Table.font", TABLE_FONT);
         UIManager.put("TableHeader.font", TABLE_FONT);
-        UIManager.put("Menu.font", MainWindow.MODERN_FONT);
-        UIManager.put("MenuItem.font", MainWindow.MODERN_FONT);
-        UIManager.put("CheckBoxMenuItem.font", MainWindow.MODERN_FONT);
+        UIManager.put("Menu.font", MODERN_FONT);
+        UIManager.put("MenuItem.font", MODERN_FONT);
+        UIManager.put("CheckBoxMenuItem.font", MODERN_FONT);
     }
 
     /**
@@ -104,26 +117,27 @@ public class MainWindow extends JFrame {
     }
 
     /**
-     * Create the main frame, sets up the size and the behavior on close.
+     * Initializes the main window frame with translated title.
      */
     private void initializeFrame() {
-        setTitle("Rover21 - PLANET Switch Discovery");
+        setTitle(lang.get("window.title"));
         setSize(1200, 700);
+        setMinimumSize(new Dimension(1000, 600));
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
     }
 
     /**
-     * Creates the menu bar and all the graphic elements that comprise it: “File,” “Edit,” “View,” “Help”.
+     * Creates the menu bar with translated menu items.
      */
     private void createMenuBar() {
         JMenuBar menuBar = new JMenuBar();
 
         // Menu File
-        JMenu fileMenu = new JMenu("File");
-        JMenuItem exportItem = new JMenuItem("Export to CSV...");
+        JMenu fileMenu = new JMenu(lang.get("menu.file"));
+        JMenuItem exportItem = new JMenuItem(lang.get("menu.export"));
         exportItem.addActionListener(e -> handleExport());
-        JMenuItem quitItem = new JMenuItem("Quit");
+        JMenuItem quitItem = new JMenuItem(lang.get("menu.quit"));
         quitItem.addActionListener(e -> System.exit(0));
 
         fileMenu.add(exportItem);
@@ -131,30 +145,46 @@ public class MainWindow extends JFrame {
         fileMenu.add(quitItem);
 
         // Menu Edit
-        JMenu editMenu = new JMenu("Edit");
-        JMenuItem preferencesItem = new JMenuItem("Preferences...");
+        JMenu editMenu = new JMenu(lang.get("menu.edit"));
+        JMenuItem preferencesItem = new JMenuItem(lang.get("menu.preferences"));
         preferencesItem.addActionListener(e -> showPreferences());
-        JMenuItem clearItem = new JMenuItem("Clear Results");
+        JMenuItem clearItem = new JMenuItem(lang.get("menu.clear"));
         clearItem.addActionListener(e -> handleClearResults());
 
         editMenu.add(preferencesItem);
         editMenu.add(clearItem);
 
+        // Add Language submenu
+        JMenu languageMenu = new JMenu(lang.get("menu.language"));
+
+        JMenuItem englishItem = new JMenuItem("English");
+        englishItem.addActionListener(e -> changeLanguage("en"));
+
+        JMenuItem frenchItem = new JMenuItem("Français");
+        frenchItem.addActionListener(e -> changeLanguage("fr"));
+
+        languageMenu.add(englishItem);
+        languageMenu.add(frenchItem);
+
+        editMenu.addSeparator();
+        editMenu.add(languageMenu);
+
         // Menu View
-        JMenu viewMenu = new JMenu("View");
-        JCheckBoxMenuItem detailsItem = new JCheckBoxMenuItem("Show Details Panel", true);
+        JMenu viewMenu = new JMenu(lang.get("menu.view"));
+        JCheckBoxMenuItem detailsItem = new JCheckBoxMenuItem(lang.get("menu.show_details"), true);
         viewMenu.add(detailsItem);
 
         // Menu Help
-        JMenu helpMenu = new JMenu("Help");
-        JMenuItem docItem = new JMenuItem("Documentation");
+        JMenu helpMenu = new JMenu(lang.get("menu.help"));
+        JMenuItem docItem = new JMenuItem(lang.get("menu.documentation"));
         docItem.addActionListener(e -> showDocumentation());
-        JMenuItem aboutItem = new JMenuItem("About Rover21");
+        JMenuItem aboutItem = new JMenuItem(lang.get("menu.about"));
         aboutItem.addActionListener(e -> showAbout());
 
         helpMenu.add(docItem);
         helpMenu.add(aboutItem);
 
+        // Add all menus
         menuBar.add(fileMenu);
         menuBar.add(editMenu);
         menuBar.add(viewMenu);
@@ -171,15 +201,16 @@ public class MainWindow extends JFrame {
         toolbar.setLayout(new BorderLayout());
         toolbar.setBorder(new EmptyBorder(12, 15, 12, 15));
 
+        // Left panel with label and combobox
         JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 0));
 
-        JLabel adapterLabel = new JLabel("Network Interface :");
+        adapterLabel = new JLabel(lang.get("toolbar.network_interface"));
         adapterLabel.setFont(MODERN_FONT);
 
         adapterComboBox = new JComboBox<>();
         adapterComboBox.setFont(MODERN_FONT);
         adapterComboBox.setPreferredSize(new Dimension(400, 30));
-        adapterComboBox.setToolTipText("Select the network adapter to scan");
+        adapterComboBox.setToolTipText(lang.get("toolbar.network_interface"));
         adapterComboBox.setRenderer(new DefaultListCellRenderer() {
             @Override
             public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
@@ -195,6 +226,7 @@ public class MainWindow extends JFrame {
         leftPanel.add(adapterLabel);
         leftPanel.add(adapterComboBox);
 
+        // Right panel with progress bar and discover button
         JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
 
         progressBar = new JProgressBar();
@@ -202,7 +234,7 @@ public class MainWindow extends JFrame {
         progressBar.setPreferredSize(new Dimension(25, 25));
         progressBar.setVisible(false);
 
-        discoverButton = new JButton("Discover");
+        discoverButton = new JButton(lang.get("toolbar.discover"));
         discoverButton.setFont(MODERN_FONT);
         discoverButton.setPreferredSize(new Dimension(130, 32));
         discoverButton.setFocusPainted(false);
@@ -218,14 +250,13 @@ public class MainWindow extends JFrame {
     }
 
     /**
-     * Create the central panel with the table.
-     * Sets all the properties of the JTable.
-     * @see JTable
+     * Creates the center panel with the table.
      */
     private void createCenterPanel() {
         JPanel centerPanel = new JPanel(new BorderLayout(0, 10));
         centerPanel.setBorder(new EmptyBorder(15, 15, 15, 15));
 
+        // Status bar at the top
         JPanel statusBar = new JPanel(new BorderLayout(15, 0));
         statusBar.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createLineBorder(new Color(144, 202, 249), 1),
@@ -233,11 +264,11 @@ public class MainWindow extends JFrame {
         ));
         statusBar.setBackground(new Color(227, 242, 253));
 
-        statusLabel = new JLabel("Ready");
+        statusLabel = new JLabel(lang.get("status.ready"));
         statusLabel.setFont(MODERN_FONT);
         statusLabel.setForeground(new Color(25, 118, 210));
 
-        deviceCountLabel = new JLabel("Devices found: 0");
+        deviceCountLabel = new JLabel(lang.get("table.devices_found", 0));
         deviceCountLabel.setFont(MODERN_FONT);
         deviceCountLabel.setForeground(new Color(25, 118, 210));
 
@@ -246,8 +277,14 @@ public class MainWindow extends JFrame {
 
         // Devices table
         String[] columns = {
-                "MAC Address", "Device Name", "Firmware version", "Device IP",
-                "IPv4 Address", "NetMask", "Gateway", "Description"
+                lang.get("table.device_name"),
+                lang.get("table.mac"),
+                lang.get("table.firmware"),
+                lang.get("table.device_ip"),
+                lang.get("table.ipv4"),
+                lang.get("table.netmask"),
+                lang.get("table.gateway"),
+                lang.get("table.description")
         };
 
         tableModel = new DefaultTableModel(columns, 0) {
@@ -263,17 +300,23 @@ public class MainWindow extends JFrame {
         devicesTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
         devicesTable.getTableHeader().setReorderingAllowed(true);
 
-        devicesTable.setShowGrid(true); // Shows the lines between the cells = better visibility
-        devicesTable.setAutoCreateRowSorter(true); // Allows us to sort the table by columns, asc & desc
+        // Show grid borders
+        devicesTable.setShowGrid(true);
         devicesTable.setGridColor(new Color(220, 220, 220));
         devicesTable.setIntercellSpacing(new Dimension(1, 1));
 
+        // Enable column sorting
+        tableSorter = new TableRowSorter<>(tableModel);
+        devicesTable.setRowSorter(tableSorter);
+
+        // Center text in cells
         DefaultTableCellRenderer centerRenderer = new DefaultTableCellRenderer();
         centerRenderer.setHorizontalAlignment(SwingConstants.CENTER);
         centerRenderer.setFont(TABLE_FONT);
 
+        // Apply centered renderer to all columns
         for (int i = 0; i < devicesTable.getColumnCount(); i++) {
-            devicesTable.getColumnModel().getColumn(i).setCellRenderer(centerRenderer); // Appliquer le renderer centré à toutes les colonnes
+            devicesTable.getColumnModel().getColumn(i).setCellRenderer(centerRenderer);
         }
 
         // Header style
@@ -282,7 +325,7 @@ public class MainWindow extends JFrame {
         header.setBackground(new Color(245, 245, 245));
         header.setForeground(new Color(60, 60, 60));
 
-        // Columns width, larger for device description but thicker for IPv4 address...
+        // Preferred column widths
         devicesTable.getColumnModel().getColumn(0).setPreferredWidth(140);
         devicesTable.getColumnModel().getColumn(1).setPreferredWidth(180);
         devicesTable.getColumnModel().getColumn(2).setPreferredWidth(120);
@@ -292,6 +335,7 @@ public class MainWindow extends JFrame {
         devicesTable.getColumnModel().getColumn(6).setPreferredWidth(120);
         devicesTable.getColumnModel().getColumn(7).setPreferredWidth(200);
 
+        // Enable/disable buttons based on selection
         devicesTable.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
                 updateButtonStates();
@@ -308,27 +352,27 @@ public class MainWindow extends JFrame {
     }
 
     /**
-     * Create bottom panel with actions buttons.
+     * Creates the bottom panel with action buttons.
      */
     private void createBottomPanel() {
         JPanel bottomPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 12));
         bottomPanel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(224, 224, 224)));
 
-        updateDeviceBtn = new JButton("Update Device");
-        updateMultiBtn = new JButton("Update Multi");
-        updateAllBtn = new JButton("Update All");
-        connectBtn = new JButton("Connect to Device");
+        updateDeviceBtn = new JButton(lang.get("button.update_device"));
+        updateMultiBtn = new JButton(lang.get("button.update_multi"));
+        updateAllBtn = new JButton(lang.get("button.update_all"));
+        connectBtn = new JButton(lang.get("button.connect"));
 
-        // Style et configuration des boutons
+        // Style and configuration of buttons
         JButton[] buttons = {updateDeviceBtn, updateMultiBtn, updateAllBtn, connectBtn};
         for (JButton btn : buttons) {
             btn.setFont(MODERN_FONT);
-            btn.setPreferredSize(new Dimension(140, 32));
+            btn.setPreferredSize(new Dimension(160, 32));
             btn.setFocusPainted(false);
             btn.setEnabled(false);
         }
 
-        // Actions des boutons
+        // Button actions
         updateDeviceBtn.addActionListener(e -> handleUpdateDevice());
         updateMultiBtn.addActionListener(e -> handleUpdateMulti());
         updateAllBtn.addActionListener(e -> handleUpdateAll());
@@ -347,6 +391,7 @@ public class MainWindow extends JFrame {
      * @param adapters all the network interfaces found that will be displayed.
      */
     public void loadNetworkInterfaceCustoms(List<NetworkInterfaceCustom> adapters) {
+        this.availableAdapters = new ArrayList<>(adapters);
         adapterComboBox.removeAllItems();
         for (NetworkInterfaceCustom adapter : adapters) {
             if (adapter.isValidForScanning()) {
@@ -397,7 +442,7 @@ public class MainWindow extends JFrame {
         progressBar.setVisible(scanning);
 
         if (scanning) {
-            statusLabel.setText("Scanning network...");
+            statusLabel.setText(lang.get("status.scanning", ""));
         }
     }
 
@@ -413,7 +458,6 @@ public class MainWindow extends JFrame {
                 title,
                 JOptionPane.ERROR_MESSAGE
         );
-        logger.error(message);
     }
 
     /**
@@ -431,21 +475,23 @@ public class MainWindow extends JFrame {
     }
 
     /**
-     * Clears the table results, returns the utility to “Ready” mode.
+     * Clears the results from the table.
      */
     public void clearResults() {
         discoveredDevices.clear();
         tableModel.setRowCount(0);
         updateDeviceCount();
         updateButtonStates();
-        statusLabel.setText("Ready.");
+        statusLabel.setText(lang.get("status.ready"));
     }
-
-    // Contains various handlers to trigger and effectively manage interactions with buttons and other elements.
     private void handleDiscoverClicked() {
         NetworkInterfaceCustom selectedAdapter = (NetworkInterfaceCustom) adapterComboBox.getSelectedItem();
+
         if (selectedAdapter == null) {
-            showError("No Adapter Selected", "Please select a network adapter before discovering.");
+            showError(
+                    lang.get("error.no_adapter_title"),
+                    lang.get("error.no_adapter_message")
+            );
             return;
         }
 
@@ -504,9 +550,13 @@ public class MainWindow extends JFrame {
      */
     private void handleExport() {
         if (discoveredDevices.isEmpty()) {
-            showInfo("No Data", "No devices to export. Please run a discovery first.");
+            showInfo(
+                    lang.get("info.no_data_title"),
+                    lang.get("info.no_data_message")
+            );
             return;
         }
+
         if (eventListener != null) {
             eventListener.onExportClicked(new ArrayList<>(discoveredDevices));
         }
@@ -524,14 +574,51 @@ public class MainWindow extends JFrame {
     }
 
     /**
+     * Changes the application language and refreshes the UI.
+     * @param languageCode the ISO 639-1 language code ("en" or "fr")
+     */
+    private void changeLanguage(String languageCode) {
+        logger.info("Changing language to : {}", languageCode);
+        lang.setLanguage(languageCode); // Change language
+        refreshUI(); // Refresh the UI
+        logger.info("Language changed successfully to : {}", languageCode);
+    }
+
+    private void refreshUI() {
+        NetworkInterfaceCustom selectedAdapter = (NetworkInterfaceCustom) adapterComboBox.getSelectedItem();
+        List<PlanetSwitchDevice> currentDevices = new ArrayList<>(discoveredDevices);
+
+
+        getContentPane().removeAll(); // Clear and rebuild
+
+        // Recreate all components
+        createMenuBar();
+        createToolbar();
+        createCenterPanel();
+        createBottomPanel();
+
+        // Restore state
+        loadNetworkInterfaceCustoms(availableAdapters);
+        if (selectedAdapter != null) {
+            adapterComboBox.setSelectedItem(selectedAdapter);
+        }
+        displayDevices(currentDevices);
+
+        // Update title
+        setTitle(lang.get("window.title"));
+
+        // Refresh display
+        revalidate();
+        repaint();
+    }
+
+    /**
      * Retrieves data from the selected columns.
      * @return List of objects from the selected rows.
      */
     private List<PlanetSwitchDevice> getSelectedDevices() {
         List<PlanetSwitchDevice> selected = new ArrayList<>();
-        int[] selectedRows = devicesTable.getSelectedRows();
-
-        for (int row : selectedRows) {
+        for (int row : devicesTable.getSelectedRows()) {
             if (row >= 0 && row < discoveredDevices.size()) {
                 selected.add(discoveredDevices.get(devicesTable.convertRowIndexToModel(row)));
             }
@@ -540,7 +627,7 @@ public class MainWindow extends JFrame {
     }
 
     private void updateDeviceCount() {
-        deviceCountLabel.setText("Devices found: " + discoveredDevices.size());
+        deviceCountLabel.setText(lang.get("table.devices_found", discoveredDevices.size()));
     }
 
     private void updateButtonStates() {
@@ -556,21 +643,24 @@ public class MainWindow extends JFrame {
     }
 
     private void showPreferences() {
-        showInfo("Preferences", "Preferences panel coming soon !");
+        showInfo(
+                lang.get("info.preferences_title"),
+                lang.get("info.preferences_message")
+        );
     }
 
     private void showDocumentation() {
-        showInfo("Documentation", "Documentation coming soon !");
+        showInfo(
+                lang.get("info.documentation_title"),
+                lang.get("info.documentation_message")
+        );
     }
 
     private void showAbout() {
         JOptionPane.showMessageDialog(
                 this,
-                "Rover21 - PLANET Switch Discovery Tool\n" +
-                        "Version 2.1.0\n\n" +
-                        "Modern network discovery tool for PLANET switches.\n\n" +
-                        "© 2026",
-                "About Rover21",
+                lang.get("about.content"),
+                lang.get("dialog.about_title"),
                 JOptionPane.INFORMATION_MESSAGE
         );
     }
