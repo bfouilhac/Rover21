@@ -3,6 +3,8 @@ package com.rover;
 import com.formdev.flatlaf.FlatLightLaf;
 import com.rover.controller.MainController;
 import com.rover.ui.MainWindow;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.swing.*;
 
@@ -11,12 +13,13 @@ import javax.swing.*;
  */
 public class Main {
 
+    private static final Logger logger = LoggerFactory.getLogger(Main.class);
+
     public static void main(String[] args) {
         try {
             UIManager.setLookAndFeel(new FlatLightLaf());  // Appliquer le thème FlatLaf pour l'UI
         } catch (Exception e) {
-            System.err.println("Failed to initialize FlatLaf theme.");
-            e.printStackTrace();
+            logger.error("Error setting Laf", e);
         }
 
         SwingUtilities.invokeLater(() -> { // Lancer l'interface sur un thread séparé
