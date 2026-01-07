@@ -180,10 +180,8 @@ public class MainController implements MainWindow.UIEventListener {
         logger.info("Update device clicked: {}", device.getDeviceName());
         // TODO: Implémenter la mise à jour d'un device
         view.showInfo(
-                "Update Device",
-                "Updating device: " + device.getDeviceName() + "\n" +
-                        "IP: " + device.getIpAddress() + "\n\n" +
-                        "This feature will be implemented soon!"
+                lang.get("info.update_device_title"),
+                lang.get("info.update_device_message", device.getDeviceName(), device.getIpAddress())
         );
     }
 
@@ -203,8 +201,10 @@ public class MainController implements MainWindow.UIEventListener {
                     .append(" (").append(device.getIpAddress()).append(")\n");
         }
         message.append("\nThis feature will be implemented soon !");
-
-        view.showInfo("Update Multiple Devices", message.toString());
+        view.showInfo(
+                lang.get("info.update_multi_title"),
+                lang.get("info.update_multi_message")
+        );
     }
 
     /**
@@ -218,9 +218,8 @@ public class MainController implements MainWindow.UIEventListener {
         logger.info("Update all clicked: {} devices", devices.size());
         // TODO: Implémenter la mise à jour des informations / firmware des appareils sélectionnés
         view.showInfo(
-                "Update All Devices",
-                "Updating all " + devices.size() + " devices.\n\n" +
-                        "This feature will be implemented soon!"
+                lang.get("info.update_all_title"),
+                lang.get("info.update_all_message", devices.size())
         );
     }
 
@@ -235,11 +234,8 @@ public class MainController implements MainWindow.UIEventListener {
         logger.info("Connect to device clicked: {}", device.getDeviceName());
         // TODO: Implémenter la connexion à l'appareil (ouvrir navigateur?)
         view.showInfo(
-                "Connect to Device",
-                "Connecting to device: " + device.getDeviceName() + "\n" +
-                        "IP: " + device.getIpAddress() + "\n\n" +
-                        "This will open the device's web interface.\n" +
-                        "Feature coming soon!"
+                lang.get("info.connect_title"),
+                lang.get("info.connect_message", device.getDeviceName(), device.getIpAddress())
         );
     }
 
@@ -254,9 +250,8 @@ public class MainController implements MainWindow.UIEventListener {
         logger.info("Export clicked: {} devices", devices.size());
         // TODO: Implémenter l'export CSV
         view.showInfo(
-                "Export to CSV",
-                "Exporting " + devices.size() + " device(s) to CSV.\n\n" +
-                        "This feature will be implemented soon!"
+                lang.get("info.export_title"),
+                lang.get("info.export_message", devices.size())
         );
     }
 

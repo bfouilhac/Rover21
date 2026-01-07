@@ -13,7 +13,6 @@ public class PlanetSwitchDevice {
     private String macAddress;
     private String deviceName; // (ex: IGS-6325-16P4S)
     private String version; // (ex: v1.440b300826)
-    private String deviceIp;
     private String ipAddress;
     private String netMask;
     private String gateway;
@@ -31,7 +30,6 @@ public class PlanetSwitchDevice {
     public String getMacAddress() {return macAddress;}
     public String getDeviceName() {return deviceName;}
     public String getVersion() {return version;}
-    public String getDeviceIp() {return deviceIp;}
     public String getIpAddress() {return ipAddress;}
     public String getNetMask() {return netMask;}
     public String getGateway() {return gateway;}
@@ -41,7 +39,6 @@ public class PlanetSwitchDevice {
     public void setMacAddress(String macAddress) {this.macAddress = macAddress;}
     public void setDeviceName(String deviceName) {this.deviceName = deviceName;}
     public void setVersion(String version) {this.version = version;}
-    public void setDeviceIp(String deviceIp) {this.deviceIp = deviceIp;}
     public void setIpAddress(String ipAddress) {this.ipAddress = ipAddress;}
     public void setNetMask(String netMask) {this.netMask = netMask;}
     public void setGateway(String gateway) {this.gateway = gateway;}

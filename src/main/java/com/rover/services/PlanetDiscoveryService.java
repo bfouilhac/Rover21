@@ -162,7 +162,6 @@ public class PlanetDiscoveryService {
 
             String ipAddress = String.format("%d.%d.%d.%d", data[20] & 0xFF, data[21] & 0xFF, data[22] & 0xFF, data[23] & 0xFF);
             device.setIpAddress(ipAddress);
-            device.setDeviceIp(ipAddress);
             logger.debug("IP Address: {}", ipAddress);
 
             String netmask = String.format("%d.%d.%d.%d", data[24] & 0xFF, data[25] & 0xFF, data[26] & 0xFF, data[27] & 0xFF);

@@ -281,7 +281,6 @@ public class MainWindow extends JFrame {
                 lang.get("table.device_name"),
                 lang.get("table.mac"),
                 lang.get("table.firmware"),
-                lang.get("table.device_ip"),
                 lang.get("table.ipv4"),
                 lang.get("table.netmask"),
                 lang.get("table.gateway"),
@@ -333,8 +332,7 @@ public class MainWindow extends JFrame {
         devicesTable.getColumnModel().getColumn(3).setPreferredWidth(120);
         devicesTable.getColumnModel().getColumn(4).setPreferredWidth(120);
         devicesTable.getColumnModel().getColumn(5).setPreferredWidth(120);
-        devicesTable.getColumnModel().getColumn(6).setPreferredWidth(120);
-        devicesTable.getColumnModel().getColumn(7).setPreferredWidth(200);
+        devicesTable.getColumnModel().getColumn(6).setPreferredWidth(200);
 
         // Enable/disable buttons based on selection
         devicesTable.getSelectionModel().addListSelectionListener(e -> {
@@ -413,10 +411,9 @@ public class MainWindow extends JFrame {
         tableModel.setRowCount(0);
         for (PlanetSwitchDevice device : devices) {
             tableModel.addRow(new Object[]{
-                    device.getMacAddress(),
                     device.getDeviceName(),
+                    device.getMacAddress(),
                     device.getVersion(),
-                    device.getDeviceIp(),
                     device.getIpAddress(),
                     device.getNetMask(),
                     device.getGateway(),
