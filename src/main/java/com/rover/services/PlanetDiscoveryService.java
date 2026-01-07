@@ -58,10 +58,10 @@ public class PlanetDiscoveryService {
             try {
                 receiveSocket = new DatagramSocket(RESPONSE_PORT); // Socket listening to port 62631, where the switches will send their answer
                 receiveSocket.setSoTimeout(SOCKET_TIMEOUT); // Timeout so we can avoid waiting too long for answers
+                receiveSocket.setBroadcast(true);
                 logger.info("Receive socket setup to port : {}", RESPONSE_PORT);
             } catch (SocketException e) {
                 logger.error("Could not bind to port {} : {}", RESPONSE_PORT, e.getMessage());
-
                 receiveSocket = new DatagramSocket(null); // Retrying without mentioning any port
                 receiveSocket.setReuseAddress(true);
                 receiveSocket.bind(new InetSocketAddress(RESPONSE_PORT));

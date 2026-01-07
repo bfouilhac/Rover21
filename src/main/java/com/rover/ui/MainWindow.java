@@ -444,7 +444,6 @@ public class MainWindow extends JFrame {
     // Contains various handlers to trigger and effectively manage interactions with buttons and other elements.
     private void handleDiscoverClicked() {
         NetworkInterfaceCustom selectedAdapter = (NetworkInterfaceCustom) adapterComboBox.getSelectedItem();
-        System.out.println("Selected adapter: " + selectedAdapter);
         if (selectedAdapter == null) {
             showError("No Adapter Selected", "Please select a network adapter before discovering.");
             return;
