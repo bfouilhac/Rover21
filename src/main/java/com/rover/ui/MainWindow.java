@@ -3,6 +3,7 @@ package com.rover.ui;
 import com.rover.model.NetworkInterfaceCustom;
 import com.rover.model.PlanetSwitchDevice;
 import com.rover.utils.LanguageManager;
+import com.rover.utils.PreferencesManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -87,8 +88,43 @@ public class MainWindow extends JFrame {
 
         // Center the window
         setLocationRelativeTo(null);
+        toFront(); // Brings the window to the front so it can be visible easily
+        setupWindowListener();
+
+        restoreWindowState();
 
         logger.info("MainWindow initialized with language: {}", lang.getCurrentLanguageCode());
+    }
+
+    /**
+     * Sets up the window listener to save state on close.
+     */
+    private void setupWindowListener() {
+        addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowClosing(java.awt.event.WindowEvent windowEvent) {
+                saveWindowState();
+            }
+        });
+    }
+
+    /**
+     * Saves the current window size and position.
+     */
+    private void saveWindowState() {
+        PreferencesManager.saveWindowSize(getWidth(), getHeight());
+        logger.info("Window state saved: {}x{} at ({}, {})",
+                getWidth(), getHeight(), getX(), getY());
+    }
+
+    /**
+     * Restores the saved window size and position.
+     */
+    private void restoreWindowState() {
+        int width = PreferencesManager.getWindowWidth(1200);
+        int height = PreferencesManager.getWindowHeight(700);
+        setSize(width, height);
+        logger.info("Window state restored : {}x{} at", width, height);
     }
 
     /**
