@@ -31,6 +31,9 @@ public class MainWindow extends JFrame {
     // Modern font for the app using Segoe UI
     private static final Font MODERN_FONT = new Font("Segoe UI", Font.PLAIN, 13);
     private static final Font TABLE_FONT = new Font("Segoe UI", Font.PLAIN, 12);
+    private static final int BUTTON_WIDTH = 130;
+    private static final int BUTTON_HEIGHT = 32;
+
     private static final Logger logger = LoggerFactory.getLogger(MainWindow.class);
 
     // Language manager for translations
@@ -50,6 +53,7 @@ public class MainWindow extends JFrame {
     private JButton updateAllBtn;
     private JButton connectBtn;
     private JButton discoverButton;
+    private JButton refreshNetIntsButton;
 
     // List of network interfaces
     private List<PlanetSwitchDevice> discoveredDevices;
@@ -70,10 +74,11 @@ public class MainWindow extends JFrame {
         void onConnectToDeviceClicked(PlanetSwitchDevice device);
         void onExportClicked(List<PlanetSwitchDevice> devices);
         void onClearResultsClicked();
+        void onRefreshAdaptersClicked();
     }
 
     /**
-     * Constructor, initiates all the graphics elements and sets the font.
+     * Constructor initiates all the graphics elements and sets the font.
      */
     public MainWindow() {
         this.discoveredDevices = new ArrayList<>();
@@ -89,7 +94,7 @@ public class MainWindow extends JFrame {
         // Center the window
         setLocationRelativeTo(null);
         toFront(); // Brings the window to the front so it can be visible easily
-        setupWindowListener();
+        setupWindowListener(); // Setting up the listener so we can know when the window is closed
 
         restoreWindowState();
 
@@ -97,7 +102,7 @@ public class MainWindow extends JFrame {
     }
 
     /**
-     * Sets up the window listener to save state on close.
+     * Sets up the window listener to save state on close. (mostly to save the dimensions)
      */
     private void setupWindowListener() {
         addWindowListener(new java.awt.event.WindowAdapter() {
@@ -109,7 +114,8 @@ public class MainWindow extends JFrame {
     }
 
     /**
-     * Saves the current window size and position.
+     * Saves the current window size in the preferences.
+     * @see PreferencesManager
      */
     private void saveWindowState() {
         PreferencesManager.saveWindowSize(getWidth(), getHeight());
@@ -118,7 +124,8 @@ public class MainWindow extends JFrame {
     }
 
     /**
-     * Restores the saved window size and position.
+     * Restores the saved window size.
+     * @see PreferencesManager
      */
     private void restoreWindowState() {
         int width = PreferencesManager.getWindowWidth(1200);
@@ -129,6 +136,7 @@ public class MainWindow extends JFrame {
 
     /**
      * Sets the font for all the components.
+     * @see UIManager
      */
     private void setUIFont() {
         UIManager.put("Button.font", MODERN_FONT);
@@ -237,10 +245,9 @@ public class MainWindow extends JFrame {
         toolbar.setLayout(new BorderLayout());
         toolbar.setBorder(new EmptyBorder(12, 15, 12, 15));
 
-        // Left panel with label and combobox
-        JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 0));
+        // Left panel with label, combobox, and refresh button
+        JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
 
-        // Menu items that need to be updated on language change
         JLabel adapterLabel = new JLabel(lang.get("toolbar.network_interface"));
         adapterLabel.setFont(MODERN_FONT);
 
@@ -250,7 +257,8 @@ public class MainWindow extends JFrame {
         adapterComboBox.setToolTipText(lang.get("toolbar.network_interface"));
         adapterComboBox.setRenderer(new DefaultListCellRenderer() {
             @Override
-            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+            public Component getListCellRendererComponent(JList<?> list, Object value,
+                                                          int index, boolean isSelected, boolean cellHasFocus) {
                 super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
                 setFont(MODERN_FONT);
                 if (value instanceof NetworkInterfaceCustom adapter) {
@@ -260,8 +268,17 @@ public class MainWindow extends JFrame {
             }
         });
 
+        // Refresh button
+        refreshNetIntsButton = new JButton(lang.get("toolbar.refresh_adapters"));
+        refreshNetIntsButton.setPreferredSize(new Dimension(BUTTON_WIDTH, BUTTON_HEIGHT));
+        refreshNetIntsButton.setFont(MODERN_FONT);
+        refreshNetIntsButton.setFocusPainted(false);
+        refreshNetIntsButton.setToolTipText(lang.get("toolbar.refresh_adapters_tip"));
+        refreshNetIntsButton.addActionListener(e -> handleRefreshAdapters());
+
         leftPanel.add(adapterLabel);
         leftPanel.add(adapterComboBox);
+        leftPanel.add(refreshNetIntsButton);
 
         // Right panel with progress bar and discover button
         JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
@@ -273,7 +290,7 @@ public class MainWindow extends JFrame {
 
         discoverButton = new JButton(lang.get("toolbar.discover"));
         discoverButton.setFont(MODERN_FONT);
-        discoverButton.setPreferredSize(new Dimension(130, 32));
+        discoverButton.setPreferredSize(new Dimension(BUTTON_WIDTH, BUTTON_HEIGHT));
         discoverButton.setFocusPainted(false);
         discoverButton.addActionListener(e -> handleDiscoverClicked());
 
@@ -402,7 +419,7 @@ public class MainWindow extends JFrame {
         JButton[] buttons = {updateDeviceBtn, updateMultiBtn, updateAllBtn, connectBtn};
         for (JButton btn : buttons) {
             btn.setFont(MODERN_FONT);
-            btn.setPreferredSize(new Dimension(160, 32));
+            btn.setPreferredSize(new Dimension(BUTTON_WIDTH, BUTTON_HEIGHT));
             btn.setFocusPainted(false);
             btn.setEnabled(false);
         }
@@ -518,6 +535,41 @@ public class MainWindow extends JFrame {
         updateButtonStates();
         statusLabel.setText(lang.get("status.ready"));
     }
+
+    /**
+     * Clears the combo box of adapters
+     */
+    public void clearAdapters() {
+        availableAdapters.clear();
+        adapterComboBox.removeAllItems();
+    }
+
+    /**
+     * Handles the refresh adapters button click.
+     * Requests the controller to reload network adapters.
+     */
+    private void handleRefreshAdapters() {
+        logger.info("Refresh adapters clicked");
+        refreshNetIntsButton.setEnabled(false); // Disable the button temporarily
+        if (eventListener != null) {
+            NetworkInterfaceCustom currentSelection = (NetworkInterfaceCustom) adapterComboBox.getSelectedItem();
+            eventListener.onRefreshAdaptersClicked();
+            if (currentSelection != null) { // Restore selection
+                for (int i = 0; i < adapterComboBox.getItemCount(); i++) {
+                    if (adapterComboBox.getItemAt(i).equals(currentSelection)) {
+                        adapterComboBox.setSelectedIndex(i);
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Re-enable button after refresh
+        SwingUtilities.invokeLater(() -> {
+            refreshNetIntsButton.setEnabled(true);
+        });
+    }
+
     private void handleDiscoverClicked() {
         NetworkInterfaceCustom selectedAdapter = (NetworkInterfaceCustom) adapterComboBox.getSelectedItem();
 

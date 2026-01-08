@@ -65,7 +65,6 @@ public class MainController implements MainWindow.UIEventListener {
     private void loadNetworkAdapters() {
         try {
             List<NetworkInterfaceCustom> adapters = adapterService.getAvailableAdapters();
-
             if (adapters.isEmpty()) {
                 view.showError(
                         lang.get("error.no_adapters_title"),
@@ -86,9 +85,18 @@ public class MainController implements MainWindow.UIEventListener {
         }
     }
 
+    @Override
+    public void onRefreshAdaptersClicked() {
+        logger.info("Refresh adapters requested");
+        view.clearAdapters();
+        view.setStatusMessage(lang.get("status.refreshing_adapters")); // Show a brief status message
+        loadNetworkAdapters(); // Reload adapters
+        logger.info("Adapters refreshed");
+    }
+
     /**
-     * Override method that manages interaction with the "Discover" button.
-     * Checks that the selected interface is valid : IP address, non-null, not loopback address.
+     * Override the method that manages interaction with the "Discover" button.
+     * Checks that the selected interface is valid: IP address, non-null, not loopback address.
      * Launches operations in a SwingWorker.
      * @param selectedAdapter the interface selected for discovering PLANET products.
      * @see SwingWorker
