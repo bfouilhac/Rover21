@@ -17,7 +17,7 @@ import java.util.List;
 import static com.rover.utils.PreferencesManager.*;
 
 /**
- * Main window of Rover21 using Java Swing and FlatLightLaf.
+ * The main window of Rover21 using Java Swing and FlatLightLaf.
  * Now supports internationalization (i18n) with English and French languages.
  * @see <a href="https://docs.oracle.com/javase/8/docs/api/javax/swing/package-summary.html"> Java Swing </a>
  * @see <a href="https://www.formdev.com/flatlaf/"> FlatLaf</a>
@@ -157,7 +157,7 @@ public class MainWindow extends JFrame {
     }
 
     /**
-     * Initializes the main window frame with translated title.
+     * Initializes the main window frame with a translated title.
      */
     private void initializeFrame() {
         setTitle(lang.get("window.title"));
@@ -243,7 +243,7 @@ public class MainWindow extends JFrame {
         toolbar.setLayout(new BorderLayout());
         toolbar.setBorder(new EmptyBorder(12, 15, 12, 15));
 
-        // Left panel with label, combobox, and refresh button
+        // Left panel with the label, combobox, and refresh button
         JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
 
         JLabel adapterLabel = new JLabel(lang.get("toolbar.network_interface"));
@@ -335,7 +335,9 @@ public class MainWindow extends JFrame {
                 lang.get("table.ipv4"),
                 lang.get("table.netmask"),
                 lang.get("table.gateway"),
-                lang.get("table.description")
+                lang.get("table.description"),
+                lang.get("table.location"),
+                lang.get("table.uptime")
         };
 
         tableModel = new DefaultTableModel(columns, 0) {
@@ -349,8 +351,7 @@ public class MainWindow extends JFrame {
             public Component prepareRenderer(TableCellRenderer renderer, int row, int column) {
                 Component c = super.prepareRenderer(renderer, row, column);
                 if (!c.getBackground().equals(getSelectionBackground())){
-                    Color bg = (row % 2 == 0 ? ALTERNATE_TABLE_COLOR : Color.WHITE);
-                    c .setBackground(bg);
+                    c.setBackground((row % 2 == 0 ? ALTERNATE_TABLE_COLOR : Color.WHITE));
                 }
                 return c;
             }
@@ -393,6 +394,9 @@ public class MainWindow extends JFrame {
         devicesTable.getColumnModel().getColumn(4).setPreferredWidth(120);
         devicesTable.getColumnModel().getColumn(5).setPreferredWidth(120);
         devicesTable.getColumnModel().getColumn(6).setPreferredWidth(200);
+        devicesTable.getColumnModel().getColumn(7).setPreferredWidth(200);
+        devicesTable.getColumnModel().getColumn(8).setPreferredWidth(200);
+
 
         // Enable/disable buttons based on selection
         devicesTable.getSelectionModel().addListSelectionListener(e -> {
@@ -471,13 +475,15 @@ public class MainWindow extends JFrame {
         tableModel.setRowCount(0);
         for (PlanetSwitchDevice device : devices) {
             tableModel.addRow(new Object[]{
-                    device.getDeviceName(),
                     device.getMacAddress(),
+                    device.getDeviceName(),
                     device.getVersion(),
                     device.getIpAddress(),
                     device.getNetMask(),
                     device.getGateway(),
-                    device.getDescription()
+                    device.getDescription(),
+                    device.getSystemLocation() != null ? device.getSystemLocation() : "N/A",
+                    device.getSystemUptime() != null ? device.getSystemUptime() : "N/A"
             });
         }
         updateDeviceCount();
@@ -486,7 +492,7 @@ public class MainWindow extends JFrame {
 
     /**
      * Update the status message in the header.
-     * @param message the message you want to print, has to be a String.
+     * @param message the message you want to print has to be a String.
      */
     public void setStatusMessage(String message) {
         statusLabel.setText(message);
@@ -570,16 +576,11 @@ public class MainWindow extends JFrame {
                 }
             }
         }
-
-        // Re-enable button after refresh
-        SwingUtilities.invokeLater(() -> {
-            refreshNetIntsButton.setEnabled(true);
-        });
+        SwingUtilities.invokeLater(() -> refreshNetIntsButton.setEnabled(true)); // Re-enable button after refresh
     }
 
     private void handleDiscoverClicked() {
         NetworkInterfaceCustom selectedAdapter = (NetworkInterfaceCustom) adapterComboBox.getSelectedItem();
-
         if (selectedAdapter == null) {
             showError(
                     lang.get("error.no_adapter_title"),
@@ -587,7 +588,6 @@ public class MainWindow extends JFrame {
             );
             return;
         }
-
         if (eventListener != null) {
             eventListener.onDiscoverClicked(selectedAdapter);
         }

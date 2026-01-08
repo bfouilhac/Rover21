@@ -48,7 +48,6 @@ public class PlanetDiscoveryService {
      * @see PlanetSwitchDevice
      */
     public List<PlanetSwitchDevice> discoverDevices(String localAddress) {
-
         logger.info("Starting PLANET device discovery on interface : {}", localAddress);
         List<PlanetSwitchDevice> devices = new ArrayList<>();
         Set<String> discoveredMacs = new HashSet<>(); // To avoid duplicates
@@ -62,19 +61,12 @@ public class PlanetDiscoveryService {
                 logger.info("Receive socket setup to port : {}", RESPONSE_PORT);
             } catch (SocketException e) {
                 logger.error("Could not bind to port {} : {}", RESPONSE_PORT, e.getMessage());
-                receiveSocket = new DatagramSocket(null); // Retrying without mentioning any port
-                receiveSocket.setReuseAddress(true);
-                receiveSocket.bind(new InetSocketAddress(RESPONSE_PORT));
-                receiveSocket.setSoTimeout(SOCKET_TIMEOUT); // Setting the timeout so we can catch SocketTimeoutException
-                logger.info("Receive socket bound to port {} with SO_REUSEADDR", RESPONSE_PORT);
+                return devices; // Exiting the program with an empty list
             }
-
             sendSocket = new DatagramSocket(new InetSocketAddress(InetAddress.getByName(localAddress), DISCOVERY_PORT));
             sendSocket.setBroadcast(true); // Setting broadcast ON so it will be sent to every device on the same network
             logger.info("Send socket created on port : {}", sendSocket.getLocalPort());
-
             sendDiscoveryPacket(sendSocket); // Sending the magic packet by the sending socket
-
             long startTime = System.currentTimeMillis(); // Starting the timer for the timeout
             logger.info("Listening for responses on port {} for {} ms...", RESPONSE_PORT, SOCKET_TIMEOUT);
             while (System.currentTimeMillis() - startTime < SOCKET_TIMEOUT) {
@@ -113,6 +105,28 @@ public class PlanetDiscoveryService {
             }
         }
         logger.info("Discovery COMPLETE. Found {} PLANET device(s)", devices.size());
+        if (!devices.isEmpty()) {
+            logger.info("Starting SNMP enrichment for {} device(s)", devices.size());
+            SNMPService snmpService = new SNMPService();
+            for (PlanetSwitchDevice device : devices) {
+                try {
+                    if (snmpService.testSNMPConnectivity(device.getIpAddress())) { // Test SNMP connectivity first
+                        snmpService.enrichDeviceWithSNMP(device); // Enrich with System Location and System Uptime
+                        logger.info("Device {} enriched with SNMP data", device.getIpAddress());
+                    } else {
+                        logger.warn("SNMP not accessible for {}", device.getIpAddress());
+                        device.setSystemLocation("SNMP not available");
+                        device.setSystemUptime("N/A");
+                    }
+                } catch (Exception e) {
+                    logger.error("Failed to enrich {} with SNMP: {}", device.getIpAddress(), e.getMessage());
+                    device.setSystemLocation("Error");
+                    device.setSystemUptime("Error");
+                }
+            }
+            snmpService.close();
+            logger.info("SNMP enrichment completed");
+        }
         return devices;
     }
 

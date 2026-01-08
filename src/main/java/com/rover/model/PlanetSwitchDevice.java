@@ -19,6 +19,10 @@ public class PlanetSwitchDevice {
     private String description;
     private boolean isOnline;
 
+    // SNMP fields
+    private String systemLocation;
+    private String systemUptime;
+
     /**
      * Constructor, initiate an empty PlanetSwitchDevice.
      */
@@ -34,7 +38,8 @@ public class PlanetSwitchDevice {
     public String getNetMask() {return netMask;}
     public String getGateway() {return gateway;}
     public String getDescription() {return description;}
-
+    public String getSystemLocation() {return systemLocation;}
+    public String getSystemUptime() {return systemUptime;}
     // Setters
     public void setMacAddress(String macAddress) {this.macAddress = macAddress;}
     public void setDeviceName(String deviceName) {this.deviceName = deviceName;}
@@ -44,6 +49,8 @@ public class PlanetSwitchDevice {
     public void setGateway(String gateway) {this.gateway = gateway;}
     public void setDescription(String description) {this.description = description;}
     public void setOnline(boolean online) {this.isOnline = online;}
+    public void setSystemLocation(String systemLocation) {this.systemLocation = systemLocation;}
+    public void setSystemUptime(String systemUptime) {this.systemUptime = systemUptime;}
 
     /**
      * @return a short string summarizing important product information.
@@ -54,6 +61,8 @@ public class PlanetSwitchDevice {
                 "macAddress='" + macAddress + '\'' +
                 ", deviceName='" + deviceName + '\'' +
                 ", ipAddress='" + ipAddress + '\'' +
+                ", systemLocation='" + systemLocation + '\'' +
+                ", systemUptime='" + systemUptime + '\'' +
                 ", isOnline=" + isOnline +
                 '}';
     }
