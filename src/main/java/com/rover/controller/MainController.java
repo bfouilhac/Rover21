@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.swing.*;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Main controller for the Rover21 application.
@@ -186,7 +187,7 @@ public class MainController implements MainWindow.UIEventListener {
     }
 
     /**
-     * Override method that manages the interaction with the "Update Multi" button.
+     * Override the method that manages the interaction with the "Update Multi" button.
      * @param devices the current PLANET switchs that will be updated.
      * @implNote For the moment, this method is useless since this part has not been defined in the specifications.
      * @see PlanetSwitchDevice
@@ -195,20 +196,17 @@ public class MainController implements MainWindow.UIEventListener {
     public void onUpdateMultiClicked(List<PlanetSwitchDevice> devices) {
         logger.info("Update multi clicked: {} devices", devices.size());
         // TODO: Implémenter la mise à jour multiple
-        StringBuilder message = new StringBuilder("Updating " + devices.size() + " devices :\n\n");
-        for (PlanetSwitchDevice device : devices) {
-            message.append("- ").append(device.getDeviceName())
-                    .append(" (").append(device.getIpAddress()).append(")\n");
-        }
-        message.append("\nThis feature will be implemented soon !");
+        String deviceList = devices.stream()
+                .map(device -> device.getDeviceName() + " (" + device.getIpAddress() + ")")
+                .collect(Collectors.joining("\n"));
         view.showInfo(
                 lang.get("info.update_multi_title"),
-                lang.get("info.update_multi_message")
+                lang.get("info.update_multi_message", devices.size(), deviceList)
         );
     }
 
     /**
-     * Override method that manages the interaction with the "Update All" button.
+     * Override the method that manages the interaction with the "Update All" button.
      * @param devices all the PLANET switchs that has were found.
      * @implNote For the moment, this method is useless since this part has not been defined in the specifications.
      * @see PlanetSwitchDevice

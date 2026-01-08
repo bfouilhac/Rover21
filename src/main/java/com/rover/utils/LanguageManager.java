@@ -119,35 +119,11 @@ public class LanguageManager{
     }
 
     /**
-     * Gets the current locale.
-     * @return the current locale
-     */
-    public Locale getCurrentLocale() {
-        return currentLocale;
-    }
-
-    /**
      * Gets the current language code.
      * @return the ISO 639-1 language code (e.g., "en", "fr")
      */
     public String getCurrentLanguageCode() {
         return currentLocale.getLanguage();
-    }
-
-    /**
-     * Checks if the current language is English.
-     * @return true if current language is English
-     */
-    public boolean isEnglish() {
-        return "en".equals(getCurrentLanguageCode());
-    }
-
-    /**
-     * Checks if the current language is French.
-     * @return true if current language is French
-     */
-    public boolean isFrench() {
-        return "fr".equals(getCurrentLanguageCode());
     }
 }
 
