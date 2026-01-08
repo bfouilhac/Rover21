@@ -9,10 +9,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
-import javax.swing.table.DefaultTableCellRenderer;
-import javax.swing.table.DefaultTableModel;
-import javax.swing.table.JTableHeader;
-import javax.swing.table.TableRowSorter;
+import javax.swing.table.*;
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -33,6 +30,7 @@ public class MainWindow extends JFrame {
     private static final Font TABLE_FONT = new Font("Segoe UI", Font.PLAIN, 12);
     private static final int BUTTON_WIDTH = 130;
     private static final int BUTTON_HEIGHT = 32;
+    private static final Color ALTERNATE_TABLE_COLOR = new Color(238, 226, 215);
 
     private static final Logger logger = LoggerFactory.getLogger(MainWindow.class);
 
@@ -347,7 +345,16 @@ public class MainWindow extends JFrame {
             }
         };
 
-        devicesTable = new JTable(tableModel);
+        devicesTable = new JTable(tableModel) {
+            public Component prepareRenderer(TableCellRenderer renderer, int row, int column) {
+                Component c = super.prepareRenderer(renderer, row, column);
+                if (!c.getBackground().equals(getSelectionBackground())){
+                    Color bg = (row % 2 == 0 ? ALTERNATE_TABLE_COLOR : Color.WHITE);
+                    c .setBackground(bg);
+                }
+                return c;
+            }
+        };
         devicesTable.setFont(TABLE_FONT);
         devicesTable.setRowHeight(30);
         devicesTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
