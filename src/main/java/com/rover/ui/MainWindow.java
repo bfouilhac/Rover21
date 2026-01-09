@@ -468,7 +468,6 @@ public class MainWindow extends JFrame {
 
     /**
      * Shows all the PLANET devices found after a discovery.
-     * @see com.rover.services.PlanetDiscoveryService#discoverDevices(String)
      */
     public void displayDevices(List<PlanetSwitchDevice> devices) {
         this.discoveredDevices = new ArrayList<>(devices);
@@ -486,6 +485,23 @@ public class MainWindow extends JFrame {
                     device.getSystemUptime() != null ? device.getSystemUptime() : "N/A"
             });
         }
+        updateDeviceCount();
+        updateButtonStates();
+    }
+
+    public void displayOneDevice(PlanetSwitchDevice device){
+        this.discoveredDevices.add(device);
+        tableModel.addRow(new Object[]{
+                device.getMacAddress(),
+                device.getDeviceName(),
+                device.getVersion(),
+                device.getIpAddress(),
+                device.getNetMask(),
+                device.getGateway(),
+                device.getDescription(),
+                device.getSystemLocation() != null ? device.getSystemLocation() : "N/A",
+                device.getSystemUptime() != null ? device.getSystemUptime() : "N/A"
+        });
         updateDeviceCount();
         updateButtonStates();
     }
@@ -717,6 +733,101 @@ public class MainWindow extends JFrame {
             }
         }
         return selected;
+    }
+
+    /**
+     * Adds a new device to the table or updates an existing one.
+     * <p>
+     * This method checks if the device already exists in the table (by MAC address).
+     * If it exists, the row is updated with new data (useful for SNMP enrichment).
+     * If it doesn't exist, a new row is added.
+     * </p>
+     *
+     * @param device the device to add or update
+     */
+    public void addOrUpdateDevice(PlanetSwitchDevice device) {
+        // Chercher si le device existe déjà (par MAC)
+        int existingRow = findDeviceRowByMac(device.getMacAddress());
+
+        if (existingRow >= 0) {
+            // Mettre à jour la ligne existante
+            updateDeviceRow(existingRow, device);
+        } else {
+            // Ajouter une nouvelle ligne
+            addDeviceRow(device);
+        }
+    }
+
+    /**
+     * Finds a device row by MAC address.
+     *
+     * @param macAddress the MAC address to search for
+     * @return the row index, or -1 if not found
+     */
+    private int findDeviceRowByMac(String macAddress) {
+        for (int i = 0; i < discoveredDevices.size(); i++) {
+            if (discoveredDevices.get(i).getMacAddress().equals(macAddress)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Updates an existing device row in the table.
+     *
+     * @param row the row index
+     * @param device the updated device data
+     */
+    private void updateDeviceRow(int row, PlanetSwitchDevice device) {
+        // Mettre à jour le device dans la liste
+        discoveredDevices.set(row, device);
+
+        // Mettre à jour la ligne dans le tableau
+        tableModel.setValueAt(device.getMacAddress(), row, 0);
+        tableModel.setValueAt(device.getDeviceName(), row, 1);
+        tableModel.setValueAt(device.getVersion(), row, 2);
+        tableModel.setValueAt(device.getIpAddress(), row, 3);
+        tableModel.setValueAt(device.getNetMask(), row, 4);
+        tableModel.setValueAt(device.getGateway(), row, 5);
+        tableModel.setValueAt(device.getDescription(), row, 6);
+        tableModel.setValueAt(device.getSystemLocation() != null ? device.getSystemLocation() : "N/A", row, 7);
+        tableModel.setValueAt(device.getSystemUptime() != null ? device.getSystemUptime() : "N/A", row, 8);
+
+        logger.debug("Updated device row: {}", device.getDeviceName());
+    }
+
+    /**
+     * Adds a new device row to the table.
+     *
+     * @param device the device to add
+     */
+    private void addDeviceRow(PlanetSwitchDevice device) {
+        discoveredDevices.add(device);
+
+        tableModel.addRow(new Object[]{
+                device.getMacAddress(),
+                device.getDeviceName(),
+                device.getVersion(),
+                device.getIpAddress(),
+                device.getNetMask(),
+                device.getGateway(),
+                device.getDescription(),
+                device.getSystemLocation() != null ? device.getSystemLocation() : "Loading...",
+                device.getSystemUptime() != null ? device.getSystemUptime() : "Loading..."
+        });
+
+        updateDeviceCount();
+        logger.debug("Added device row: {}", device.getDeviceName());
+    }
+
+    /**
+     * Returns the current number of discovered devices.
+     *
+     * @return the device count
+     */
+    public int getDeviceCount() {
+        return discoveredDevices.size();
     }
 
     private void updateDeviceCount() {

@@ -1,8 +1,8 @@
 package com.rover.services;
 
-import com.rover.model.NetworkInterfaceCustom;
 import com.rover.model.PlanetSwitchDevice;
 import com.rover.utils.PreferencesManager;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,7 +54,7 @@ public class PlanetDiscoveryService {
      * @see #parseResponse(DatagramPacket)
      * @see PreferencesManager#getDiscoveryTimeout()
      */
-    public List<PlanetSwitchDevice> discoverDevices(String localAddress) {
+    public List<PlanetSwitchDevice> discoverDevices(String localAddress, DiscoveryCallback callback) {
         // Load configuration from preferences
         int socketTimeout = PreferencesManager.getDiscoveryTimeout();
         int responsePort = PreferencesManager.getDiscoveryListenPort();
@@ -80,9 +80,7 @@ public class PlanetDiscoveryService {
             }
 
             // Set up send socket bound to a specific interface
-            sendSocket = new DatagramSocket(
-                    new InetSocketAddress(InetAddress.getByName(localAddress), discoveryPort)
-            );
+            sendSocket = new DatagramSocket(new InetSocketAddress(InetAddress.getByName(localAddress), discoveryPort));
             sendSocket.setBroadcast(true);
             logger.info("Send socket created on port: {}", sendSocket.getLocalPort());
 
@@ -100,30 +98,28 @@ public class PlanetDiscoveryService {
                     DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                     receiveSocket.receive(packet);
 
-                    // Parse the response
                     PlanetSwitchDevice device = parseResponse(packet);
 
-                    if (device != null) {
-                        // Check for duplicates using MAC address
-                        if (!discoveredMacs.contains(device.getMacAddress())) {
-                            devices.add(device);
-                            discoveredMacs.add(device.getMacAddress());
-                            logger.info("Discovered PLANET device: {} at {}",
-                                    device.getDeviceName(), device.getIpAddress());
-                        } else {
-                            logger.debug("Device already discovered (duplicate): {}",
-                                    device.getMacAddress());
-                        }
-                    } else {
-                        logger.warn("Failed to parse device from packet.");
-                    }
+                    if (device != null && !discoveredMacs.contains(device.getMacAddress())) {
+                        devices.add(device);
+                        discoveredMacs.add(device.getMacAddress());
 
+                        logger.info("Discovered PLANET device: {} at {}", device.getDeviceName(), device.getIpAddress());
+                        if (callback != null) {
+                            callback.onDeviceDiscovered(device);
+                        }
+                        if (PreferencesManager.getAutoEnrichSnmp()) {
+                            enrichDeviceAsync(device, callback);
+                        }
+                    }
                 } catch (SocketTimeoutException e) {
-                    logger.debug("Socket timeout reached after {} ms, ending discovery",
-                            System.currentTimeMillis() - startTime);
                     break;
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
                 }
             }
+
+            return devices;
 
         } catch (IOException e) {
             logger.error("Error during device discovery", e);
@@ -138,15 +134,45 @@ public class PlanetDiscoveryService {
                 logger.debug("Receive socket closed.");
             }
         }
-
         logger.info("Discovery COMPLETE. Found {} PLANET device(s)", devices.size());
-
-        // Enrich devices with SNMP data if any were found
-        if (!devices.isEmpty()) {
-            enrichDevicesWithSNMP(devices);
-        }
-
         return devices;
+    }
+
+    /**
+     * Enriches a device with SNMP data in a separate thread.
+     * Calls the callback when enrichment completes.
+     *
+     * @param device the device to enrich
+     * @param callback the callback to notify (can be null)
+     */
+    private void enrichDeviceAsync(PlanetSwitchDevice device, DiscoveryCallback callback) throws InterruptedException {
+        Thread enrichmentThread = new Thread(() -> { // Create a new thread for SNMP enrichment
+            SNMPService snmpService = new SNMPService();
+            try {
+                if (snmpService.testSNMPConnectivity(device.getIpAddress())) {
+                    snmpService.enrichDeviceWithSNMP(device);
+                    logger.info("Device {} enriched with SNMP data", device.getIpAddress());
+
+                    // Notify callback
+                    if (callback != null) {
+                        callback.onDeviceEnriched(device);
+                    }
+                } else {
+                    device.setSystemLocation("SNMP not available");
+                    device.setSystemUptime("N/A");
+                }
+            } catch (Exception e) {
+                logger.error("Failed to enrich {} with SNMP: {}",
+                        device.getIpAddress(), e.getMessage());
+                device.setSystemLocation("Error");
+                device.setSystemUptime("Error");
+            } finally {
+                snmpService.close();
+            }
+        });
+        enrichmentThread.setName("SNMP-Enrichment-" + device.getIpAddress());
+        enrichmentThread.start();
+        enrichmentThread.join(PreferencesManager.getSnmpTimeout());
     }
 
     /**

@@ -2,6 +2,7 @@ package com.rover.controller;
 
 import com.rover.model.NetworkInterfaceCustom;
 import com.rover.model.PlanetSwitchDevice;
+import com.rover.services.DiscoveryCallback;
 import com.rover.services.NetworkAdapterService;
 import com.rover.services.PlanetDiscoveryService;
 import com.rover.ui.MainWindow;
@@ -129,27 +130,11 @@ public class MainController implements MainWindow.UIEventListener {
         logger.info("Adapters refreshed");
     }
 
-    /**
-     * Handles the discover button click event to scan for PLANET switches on the network.
-     * <p>
-     * This method validates the selected network adapter, then launches an asynchronous
-     * discovery process using a SwingWorker. The discovery sends UDP broadcast packets
-     * to detect PLANET switches on the local network and displays a countdown timer
-     * during the scan. Results are displayed in the main window table once completed.
-     * </p>
-     *
-     * @param selectedAdapter the network interface to use for the discovery scan
-     * @see NetworkAdapterService#isAdapterValid(NetworkInterfaceCustom)
-     * @see PlanetDiscoveryService#discoverDevices(String)
-     * @see MainWindow#setScanningMode(boolean)
-     * @see MainWindow#displayDevices(List)
-     */
     @Override
     public void onDiscoverClicked(NetworkInterfaceCustom selectedAdapter) {
         view.clearResults();
         logger.info("Discover clicked for adapter: {}", selectedAdapter.getName());
 
-        // Validate the selected adapter
         if (!adapterService.isAdapterValid(selectedAdapter)) {
             view.showError(
                     lang.get("error.invalid_adapter_title"),
@@ -160,25 +145,15 @@ public class MainController implements MainWindow.UIEventListener {
 
         view.setScanningMode(true);
 
-        // Create a background worker to perform discovery without blocking the UI
-        SwingWorker<List<PlanetSwitchDevice>, Integer> worker = new SwingWorker<>() {
-
-            /**
-             * Performs the network discovery in a background thread.
-             * <p>
-             * This method starts a countdown timer thread and initiates the UDP-based
-             * discovery process to find PLANET switches on the network.
-             * </p>
-             *
-             * @return a list of discovered PLANET switches
-             */
+        SwingWorker<List<PlanetSwitchDevice>, PlanetSwitchDevice> worker = new SwingWorker<>() {
             @Override
             protected List<PlanetSwitchDevice> doInBackground() {
-                Thread countdownThread = new Thread(() -> { // Start a countdown timer thread
+                // Countdown thread
+                Thread countdownThread = new Thread(() -> {
                     int timeoutSeconds = PreferencesManager.getDiscoveryTimeout() / 1000;
                     for (int i = timeoutSeconds; i >= 0; i--) {
-                        publish(i);
                         try {
+                            updateTimeRemaining(i);
                             Thread.sleep(1000);
                         } catch (InterruptedException e) {
                             break;
@@ -186,47 +161,39 @@ public class MainController implements MainWindow.UIEventListener {
                     }
                 });
                 countdownThread.start();
+                DiscoveryCallback callback = new DiscoveryCallback() {
+                    @Override
+                    public void onDeviceDiscovered(PlanetSwitchDevice device) {
+                        publish(device);
+                    }
 
-                List<PlanetSwitchDevice> devices = discoveryService.discoverDevices(selectedAdapter.getIpAddress()); // Perform the actual discovery
+                    @Override
+                    public void onDeviceEnriched(PlanetSwitchDevice device) {
+                        publish(device);
+                    }
+                };
 
+                // Lancer la découverte avec le callback
+                List<PlanetSwitchDevice> devices = discoveryService.discoverDevices(selectedAdapter.getIpAddress(), callback);
                 countdownThread.interrupt();
                 return devices;
             }
 
             /**
-             * Updates the UI with countdown progress.
-             * <p>
-             * This method is called on the Event Dispatch Thread (EDT) and receives
-             * published countdown values from the background thread.
-             * </p>
-             *
-             * @param chunks list of published countdown values (seconds remaining)
+             * Process est appelé sur l'EDT pour chaque device publié.
+             * On peut mettre à jour l'UI en temps réel !
              */
             @Override
-            protected void process(List<Integer> chunks) {
-                if (!chunks.isEmpty()) {
-                    int secondsRemaining = chunks.get(chunks.size() - 1);
-
-                    if (secondsRemaining > 1) {
-                        view.setStatusMessage(lang.get("status.scanning_progress", secondsRemaining));
-                    } else {
-                        view.setStatusMessage(lang.get("status.scanning_progress_singular", secondsRemaining));
-                    }
+            protected void process(List<PlanetSwitchDevice> chunks) {
+                for (PlanetSwitchDevice device : chunks) {
+                    view.addOrUpdateDevice(device);
                 }
             }
 
-            /**
-             * Handles the completion of the discovery process.
-             * <p>
-             * This method is called on the EDT after the background discovery completes.
-             * It displays the found devices in the table and updates the status message.
-             * </p>
-             */
             @Override
             protected void done() {
                 try {
                     List<PlanetSwitchDevice> devices = get();
-                    view.displayDevices(devices);
                     view.setScanningMode(false);
 
                     if (devices.isEmpty()) {
@@ -250,6 +217,20 @@ public class MainController implements MainWindow.UIEventListener {
         };
 
         worker.execute();
+    }
+
+    /**
+     * Private method that updates the UI
+     * Show how many seconds are remaining before the discovery ends
+     *
+     * @param remainingSeconds the number of seconds remaining
+     */
+    private void updateTimeRemaining(int remainingSeconds) {
+        if (remainingSeconds > 1){
+            view.setStatusMessage(lang.get("status.scanning_progress", remainingSeconds));
+        } else {
+            view.setStatusMessage(lang.get("status.scanning_progress_singular", remainingSeconds));
+        }
     }
 
     /**
