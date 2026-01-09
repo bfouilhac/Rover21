@@ -736,10 +736,15 @@ public class MainWindow extends JFrame {
     }
 
     private void showPreferences() {
-        showInfo(
-                lang.get("info.preferences_title"),
-                lang.get("info.preferences_message")
-        );
+        PreferencesDialog dialog = new PreferencesDialog(this);
+        dialog.setVisible(true);
+        dialog.toFront();
+        if (dialog.wasApplied()) { // Si l'utilisateur a appliqué des changements
+            showInfo(
+                    lang.get("preferences.applied_title"),
+                    lang.get("preferences.applied_message")
+            );
+        }
     }
 
     private void showDocumentation() {

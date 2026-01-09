@@ -2,6 +2,7 @@ package com.rover.services;
 
 import com.rover.model.NetworkInterfaceCustom;
 import com.rover.model.PlanetSwitchDevice;
+import com.rover.utils.PreferencesManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -11,6 +12,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.prefs.Preferences;
 
 /**
  * Service used to perform the discovery on a specific network using UDP broadcast and a magic discovery packet to find PLANET switches.
@@ -22,7 +24,7 @@ public class PlanetDiscoveryService {
 
     private static final int DISCOVERY_PORT = 62630; // The port that the switch listens on for discovery.
     private static final int RESPONSE_PORT = 62631; // The port to which the switch sends its response.
-    private static final int SOCKET_TIMEOUT = 5000; // 5s of discovery, allowing time for all devices to answer.
+    private final int SOCKET_TIMEOUT = PreferencesManager.getDiscoveryTimeout(); // in milliseconds
     private static final int MAX_PACKET_SIZE = 1024;
 
     // Magic bytes for the discovery (16 bytes)
@@ -48,6 +50,7 @@ public class PlanetDiscoveryService {
      * @see PlanetSwitchDevice
      */
     public List<PlanetSwitchDevice> discoverDevices(String localAddress) {
+        int SOCKET_TIMEOUT = PreferencesManager.getDiscoveryTimeout();
         logger.info("Starting PLANET device discovery on interface : {}", localAddress);
         List<PlanetSwitchDevice> devices = new ArrayList<>();
         Set<String> discoveredMacs = new HashSet<>(); // To avoid duplicates

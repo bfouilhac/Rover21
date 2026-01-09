@@ -21,6 +21,14 @@ public class PreferencesManager {
     private static final String WINDOW_WIDTH_KEY = "window.width";
     private static final String WINDOW_HEIGHT_KEY = "window.height";
 
+    // SNMP preferences
+    private static final String SNMP_COMMUNITY_KEY = "snmp.community";
+    private static final String SNMP_TIMEOUT_KEY = "snmp.timeout";
+    private static final String DISCOVERY_TIMEOUT_KEY = "discovery.timeout";
+    private static final String AUTO_ENRICH_SNMP_KEY = "auto.enrich.snmp";
+    private static final String PORT_SNMP_KEY = "port.snmp.key";
+    private static final String SNMP_RETRIES = "snmp.retries";
+
     /**
      * Saves the selected language preference.
      * @param languageCode the ISO 639-1 language code ("en", "fr")
@@ -75,5 +83,78 @@ public class PreferencesManager {
      */
     public static int getWindowHeight(int defaultHeight) {
         return prefs.getInt(WINDOW_HEIGHT_KEY, defaultHeight);
+    }
+
+    public static int getSnmpTimeout() {return prefs.getInt(SNMP_TIMEOUT_KEY, 1000);}
+
+    public static String getSnmpCommunity() {return prefs.get(SNMP_COMMUNITY_KEY, "public");}
+
+    public static int getDiscoveryTimeout() {return prefs.getInt(DISCOVERY_TIMEOUT_KEY, 5000);}
+
+    public static boolean getAutoEnrichSnmp() {return prefs.getBoolean(AUTO_ENRICH_SNMP_KEY, true);}
+
+    public static int getSNMPRetries() {return prefs.getInt(SNMP_RETRIES, 3);}
+
+    public static int getPortSNMP() {return prefs.getInt(PORT_SNMP_KEY, 161);}
+
+    public static void saveSNMPRetries(String retries) {
+        try {
+            prefs.put(SNMP_RETRIES, retries);
+            prefs.flush();
+            logger.info("SNMP retries saved");
+        } catch (BackingStoreException e) {
+            logger.error("Failed to save SNMP retries", e);
+        }
+    }
+
+    public static void saveSNMPPort(String snmpPort) {
+        try {
+            prefs.put(PORT_SNMP_KEY, snmpPort);
+            prefs.flush();
+            logger.info("SNMP port saved");
+        } catch (BackingStoreException e) {
+            logger.error("Failed to save SNMP port", e);
+        }
+    }
+
+    // SNMP Community
+    public static void saveSnmpCommunity(String community) {
+        try {
+            prefs.put(SNMP_COMMUNITY_KEY, community);
+            prefs.flush();
+            logger.info("SNMP community saved");
+        } catch (BackingStoreException e) {
+            logger.error("Failed to save SNMP community", e);
+        }
+    }
+
+    // SNMP Timeout
+    public static void saveSnmpTimeout(int timeout) {
+        try {
+            prefs.putInt(SNMP_TIMEOUT_KEY, timeout);
+            prefs.flush();
+        } catch (BackingStoreException e) {
+            logger.error("Failed to save SNMP timeout", e);
+        }
+    }
+
+    // Discovery Timeout
+    public static void saveDiscoveryTimeout(int timeout) {
+        try {
+            prefs.putInt(DISCOVERY_TIMEOUT_KEY, timeout);
+            prefs.flush();
+        } catch (BackingStoreException e) {
+            logger.error("Failed to save discovery timeout", e);
+        }
+    }
+
+    // Auto Enrich SNMP
+    public static void saveAutoEnrichSnmp(boolean autoEnrich) {
+        try {
+            prefs.putBoolean(AUTO_ENRICH_SNMP_KEY, autoEnrich);
+            prefs.flush();
+        } catch (BackingStoreException e) {
+            logger.error("Failed to save auto enrich SNMP", e);
+        }
     }
 }

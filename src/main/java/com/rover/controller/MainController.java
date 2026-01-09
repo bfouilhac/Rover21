@@ -6,6 +6,7 @@ import com.rover.services.NetworkAdapterService;
 import com.rover.services.PlanetDiscoveryService;
 import com.rover.ui.MainWindow;
 import com.rover.utils.LanguageManager;
+import com.rover.utils.PreferencesManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -118,7 +119,7 @@ public class MainController implements MainWindow.UIEventListener {
             @Override
             protected List<PlanetSwitchDevice> doInBackground(){
                 Thread countdownThread = new Thread(() -> {
-                    for (int i = discoveryService.getTimeout() / 1000; i >= 0; i--) {
+                    for (int i = PreferencesManager.getDiscoveryTimeout() / 1000; i >= 0; i--) {
                         publish(i); // Send the value to process()
                         try {
                             Thread.sleep(1000); // Wait one second between each (so we can get 5 ... 4 ... 3 ...)
