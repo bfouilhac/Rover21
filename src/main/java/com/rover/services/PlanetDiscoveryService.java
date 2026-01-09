@@ -22,9 +22,7 @@ public class PlanetDiscoveryService {
 
     private static final Logger logger = LoggerFactory.getLogger(PlanetDiscoveryService.class);
 
-    private static final int DISCOVERY_PORT = 62630; // The port that the switch listens on for discovery.
-    private static final int RESPONSE_PORT = 62631; // The port to which the switch sends its response.
-    private final int SOCKET_TIMEOUT = PreferencesManager.getDiscoveryTimeout(); // in milliseconds
+    private final int socketTimeout = PreferencesManager.getDiscoveryTimeout(); // in milliseconds
     private static final int MAX_PACKET_SIZE = 1024;
 
     // Magic bytes for the discovery (16 bytes)
@@ -41,7 +39,7 @@ public class PlanetDiscoveryService {
      * @return the current limit time used for the discovery.
      * @see com.rover.controller.MainController#onDiscoverClicked(NetworkInterfaceCustom)
      */
-    public int getTimeout() {return SOCKET_TIMEOUT;}
+    public int getTimeout() {return socketTimeout;}
 
     /**
      * Sends the magic packet by broadcast and waits for the device's response.
@@ -50,7 +48,10 @@ public class PlanetDiscoveryService {
      * @see PlanetSwitchDevice
      */
     public List<PlanetSwitchDevice> discoverDevices(String localAddress) {
-        int SOCKET_TIMEOUT = PreferencesManager.getDiscoveryTimeout();
+        int socketTimeout = PreferencesManager.getDiscoveryTimeout();
+        int responsePort = PreferencesManager.getDiscoveryListenPort();
+        int discoveryPort = PreferencesManager.getDiscoverySendPort();
+        
         logger.info("Starting PLANET device discovery on interface : {}", localAddress);
         List<PlanetSwitchDevice> devices = new ArrayList<>();
         Set<String> discoveredMacs = new HashSet<>(); // To avoid duplicates
@@ -58,21 +59,21 @@ public class PlanetDiscoveryService {
         DatagramSocket receiveSocket = null; // init
         try {
             try {
-                receiveSocket = new DatagramSocket(RESPONSE_PORT); // Socket listening to port 62631, where the switches will send their answer
-                receiveSocket.setSoTimeout(SOCKET_TIMEOUT); // Timeout so we can avoid waiting too long for answers
+                receiveSocket = new DatagramSocket(PreferencesManager.getDiscoveryListenPort()); // Socket listening to port 62631, where the switches will send their answer
+                receiveSocket.setSoTimeout(socketTimeout); // Timeout so we can avoid waiting too long for answers
                 receiveSocket.setBroadcast(true);
-                logger.info("Receive socket setup to port : {}", RESPONSE_PORT);
+                logger.info("Receive socket setup to port : {}", responsePort);
             } catch (SocketException e) {
-                logger.error("Could not bind to port {} : {}", RESPONSE_PORT, e.getMessage());
+                logger.error("Could not bind to port {} : {}", responsePort, e.getMessage());
                 return devices; // Exiting the program with an empty list
             }
-            sendSocket = new DatagramSocket(new InetSocketAddress(InetAddress.getByName(localAddress), DISCOVERY_PORT));
+            sendSocket = new DatagramSocket(new InetSocketAddress(InetAddress.getByName(localAddress), discoveryPort));
             sendSocket.setBroadcast(true); // Setting broadcast ON so it will be sent to every device on the same network
             logger.info("Send socket created on port : {}", sendSocket.getLocalPort());
-            sendDiscoveryPacket(sendSocket); // Sending the magic packet by the sending socket
+            sendDiscoveryPacket(sendSocket, discoveryPort); // Sending the magic packet by the sending socket
             long startTime = System.currentTimeMillis(); // Starting the timer for the timeout
-            logger.info("Listening for responses on port {} for {} ms...", RESPONSE_PORT, SOCKET_TIMEOUT);
-            while (System.currentTimeMillis() - startTime < SOCKET_TIMEOUT) {
+            logger.info("Listening for responses on port {} for {} ms...", responsePort, socketTimeout);
+            while (System.currentTimeMillis() - startTime < socketTimeout) {
                 try {
                     byte[] buffer = new byte[MAX_PACKET_SIZE];
                     DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
@@ -139,9 +140,9 @@ public class PlanetDiscoveryService {
      * @see DatagramSocket
      * @see DatagramPacket
      */
-    private void sendDiscoveryPacket(DatagramSocket socket) throws IOException {
-        socket.send(new DatagramPacket(DISCOVERY_PACKET, DISCOVERY_PACKET.length, InetAddress.getByName("255.255.255.255"), DISCOVERY_PORT));
-        logger.debug("Discovery packet sent : {}", DISCOVERY_PORT);
+    private void sendDiscoveryPacket(DatagramSocket socket, int discoveryPort) throws IOException {
+        socket.send(new DatagramPacket(DISCOVERY_PACKET, DISCOVERY_PACKET.length, InetAddress.getByName("255.255.255.255"), discoveryPort));
+        logger.debug("Discovery packet sent : {}", discoveryPort);
     }
 
     /**

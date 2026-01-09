@@ -24,10 +24,14 @@ public class PreferencesManager {
     // SNMP preferences
     private static final String SNMP_COMMUNITY_KEY = "snmp.community";
     private static final String SNMP_TIMEOUT_KEY = "snmp.timeout";
-    private static final String DISCOVERY_TIMEOUT_KEY = "discovery.timeout";
     private static final String AUTO_ENRICH_SNMP_KEY = "auto.enrich.snmp";
     private static final String PORT_SNMP_KEY = "port.snmp.key";
     private static final String SNMP_RETRIES = "snmp.retries";
+
+    // Discovery preferences
+    private static final String DISCOVERY_SEND_PORT_KEY = "discovery.send.port";
+    private static final String DISCOVERY_LISTEN_PORT_KEY = "discovery.listen.port";
+    private static final String DISCOVERY_TIMEOUT_KEY = "discovery.timeout";
 
     /**
      * Saves the selected language preference.
@@ -156,5 +160,33 @@ public class PreferencesManager {
         } catch (BackingStoreException e) {
             logger.error("Failed to save auto enrich SNMP", e);
         }
+    }
+
+    // Discovery Send Port
+    public static void saveDiscoverySendPort(int port) {
+        try {
+            prefs.putInt(DISCOVERY_SEND_PORT_KEY, port);
+            prefs.flush();
+        } catch (BackingStoreException e) {
+            logger.error("Failed to save discovery send port", e);
+        }
+    }
+
+    public static int getDiscoverySendPort() {
+        return prefs.getInt(DISCOVERY_SEND_PORT_KEY, 62630);
+    }
+
+    // Discovery Listen Port
+    public static void saveDiscoveryListenPort(int port) {
+        try {
+            prefs.putInt(DISCOVERY_LISTEN_PORT_KEY, port);
+            prefs.flush();
+        } catch (BackingStoreException e) {
+            logger.error("Failed to save discovery listen port", e);
+        }
+    }
+
+    public static int getDiscoveryListenPort() {
+        return prefs.getInt(DISCOVERY_LISTEN_PORT_KEY, 62631);
     }
 }

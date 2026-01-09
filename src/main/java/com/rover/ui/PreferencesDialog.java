@@ -17,6 +17,10 @@ public class PreferencesDialog extends JDialog {
     private JSpinner discoveryTimeoutSpinner;
     private JCheckBox autoEnrichSnmpCheckbox;
 
+    // Discovery ports
+    private JTextField discoverySendPortSpinner;
+    private JTextField discoveryListenPortSpinner;
+
     private boolean wasApplied = false;
 
     public PreferencesDialog(JFrame parent) {
@@ -43,7 +47,7 @@ public class PreferencesDialog extends JDialog {
         mainPanel.add(Box.createVerticalStrut(15));
         mainPanel.add(createSnmpBlock());
 
-        // Add to scroll pane (for future expansion)
+        // Add to the scroll pane (for future expansion)
         JScrollPane scrollPane = new JScrollPane(mainPanel);
         scrollPane.setBorder(null);
         add(scrollPane, BorderLayout.CENTER);
@@ -82,6 +86,32 @@ public class PreferencesDialog extends JDialog {
 
         gbc.gridx = 2; gbc.weightx = 1.0;
         panel.add(new JLabel(lang.get("preferences.milliseconds")), gbc);
+
+        // Send port
+        gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0;
+        panel.add(new JLabel(lang.get("preferences.discovery_send_port")), gbc);
+
+        gbc.gridx = 1; gbc.weightx = 0;
+        discoverySendPortSpinner = new JTextField();
+        discoverySendPortSpinner.setText(String.valueOf(PreferencesManager.getDiscoverySendPort()));
+        discoverySendPortSpinner.setPreferredSize(new Dimension(80, 25));
+        panel.add(discoverySendPortSpinner, gbc);
+
+        gbc.gridx = 2; gbc.weightx = 1.0;
+        panel.add(new JLabel(""), gbc); // Empty label for alignment
+
+        // Listen port
+        gbc.gridx = 0; gbc.gridy = 2; gbc.weightx = 0;
+        panel.add(new JLabel(lang.get("preferences.discovery_listen_port")), gbc);
+
+        gbc.gridx = 1; gbc.weightx = 0;
+        discoveryListenPortSpinner = new JTextField();
+        discoveryListenPortSpinner.setText(String.valueOf(PreferencesManager.getDiscoveryListenPort()));
+        discoveryListenPortSpinner.setPreferredSize(new Dimension(80, 25));
+        panel.add(discoveryListenPortSpinner, gbc);
+
+        gbc.gridx = 2; gbc.weightx = 1.0;
+        panel.add(new JLabel(""), gbc);
 
         return panel;
     }
@@ -155,16 +185,20 @@ public class PreferencesDialog extends JDialog {
     }
 
     private void loadPreferences() {
-        discoveryTimeoutSpinner.setValue(PreferencesManager.getDiscoveryTimeout());
         snmpCommunityField.setText(PreferencesManager.getSnmpCommunity());
         snmpTimeoutSpinner.setValue(PreferencesManager.getSnmpTimeout());
+        discoveryTimeoutSpinner.setValue(PreferencesManager.getDiscoveryTimeout());
+        discoverySendPortSpinner.setText(String.valueOf(PreferencesManager.getDiscoverySendPort()));      // ← NOUVEAU
+        discoveryListenPortSpinner.setText(String.valueOf(PreferencesManager.getDiscoveryListenPort()));  // ← NOUVEAU
         autoEnrichSnmpCheckbox.setSelected(PreferencesManager.getAutoEnrichSnmp());
     }
 
     private void savePreferences() {
-        PreferencesManager.saveDiscoveryTimeout((Integer) discoveryTimeoutSpinner.getValue());
         PreferencesManager.saveSnmpCommunity(snmpCommunityField.getText());
         PreferencesManager.saveSnmpTimeout((Integer) snmpTimeoutSpinner.getValue());
+        PreferencesManager.saveDiscoveryTimeout((Integer) discoveryTimeoutSpinner.getValue());
+        PreferencesManager.saveDiscoverySendPort(Integer.parseInt(discoverySendPortSpinner.getText()));      // ← NOUVEAU
+        PreferencesManager.saveDiscoveryListenPort(Integer.parseInt(discoveryListenPortSpinner.getText()));  // ← NOUVEAU
         PreferencesManager.saveAutoEnrichSnmp(autoEnrichSnmpCheckbox.isSelected());
     }
 
