@@ -13,6 +13,8 @@ import javax.swing.table.*;
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 import static com.rover.utils.PreferencesManager.*;
 
@@ -44,6 +46,9 @@ public class MainWindow extends JFrame {
     private JLabel deviceCountLabel;
     private JTable devicesTable;
     private DefaultTableModel tableModel;
+
+    private Map<String, Map<String, JCheckBox>> deviceCheckboxes = new HashMap<>();
+
 
     // Actions buttons
     private JButton updateDeviceBtn;
@@ -337,16 +342,28 @@ public class MainWindow extends JFrame {
                 lang.get("table.gateway"),
                 lang.get("table.description"),
                 lang.get("table.location"),
-                lang.get("table.uptime")
+                lang.get("table.uptime"),
+                "Telnet",
+                "SSH",
+                "HTTP",
+                "HTTPS"
         };
+
 
         tableModel = new DefaultTableModel(columns, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
                 return false;
             }
-        };
 
+            @Override
+            public Class<?> getColumnClass(int column) {
+                if (column >= 9 && column <= 12) {
+                    return Boolean.class;
+                }
+                return String.class;
+            }
+        };
         devicesTable = new JTable(tableModel) {
             public Component prepareRenderer(TableCellRenderer renderer, int row, int column) {
                 Component c = super.prepareRenderer(renderer, row, column);
@@ -375,11 +392,12 @@ public class MainWindow extends JFrame {
         centerRenderer.setHorizontalAlignment(SwingConstants.CENTER);
         centerRenderer.setFont(TABLE_FONT);
 
-        // Apply centered renderer to all columns
+        // Apply centered renderer to all columns except checkbox columns
         for (int i = 0; i < devicesTable.getColumnCount(); i++) {
-            devicesTable.getColumnModel().getColumn(i).setCellRenderer(centerRenderer);
+            if (i < 9) {
+                devicesTable.getColumnModel().getColumn(i).setCellRenderer(centerRenderer);
+            }
         }
-
         // Header style
         JTableHeader header = devicesTable.getTableHeader();
         header.setFont(TABLE_FONT);
@@ -397,6 +415,10 @@ public class MainWindow extends JFrame {
         devicesTable.getColumnModel().getColumn(7).setPreferredWidth(200);
         devicesTable.getColumnModel().getColumn(8).setPreferredWidth(200);
 
+        devicesTable.getColumnModel().getColumn(9).setPreferredWidth(70);
+        devicesTable.getColumnModel().getColumn(10).setPreferredWidth(70);
+        devicesTable.getColumnModel().getColumn(11).setPreferredWidth(70);
+        devicesTable.getColumnModel().getColumn(12).setPreferredWidth(70);
 
         // Enable/disable buttons based on selection
         devicesTable.getSelectionModel().addListSelectionListener(e -> {
@@ -473,35 +495,34 @@ public class MainWindow extends JFrame {
         this.discoveredDevices = new ArrayList<>(devices);
         tableModel.setRowCount(0);
         for (PlanetSwitchDevice device : devices) {
+            JCheckBox telnetCB = new JCheckBox();
+            JCheckBox sshCB = new JCheckBox();
+            JCheckBox httpCB = new JCheckBox();
+            JCheckBox httpsCB = new JCheckBox();
+
+            Map<String, JCheckBox> checkboxMap = new HashMap<>();
+            checkboxMap.put("telnet", telnetCB);
+            checkboxMap.put("ssh", sshCB);
+            checkboxMap.put("http", httpCB);
+            checkboxMap.put("https", httpsCB);
+            deviceCheckboxes.put(device.getMacAddress(), checkboxMap);
+
             tableModel.addRow(new Object[]{
-                    device.getMacAddress(),
                     device.getDeviceName(),
+                    device.getMacAddress(),
                     device.getVersion(),
                     device.getIpAddress(),
                     device.getNetMask(),
                     device.getGateway(),
                     device.getDescription(),
                     device.getSystemLocation() != null ? device.getSystemLocation() : "N/A",
-                    device.getSystemUptime() != null ? device.getSystemUptime() : "N/A"
+                    device.getSystemUptime() != null ? device.getSystemUptime() : "N/A",
+                    false,
+                    false,
+                    false,
+                    false
             });
         }
-        updateDeviceCount();
-        updateButtonStates();
-    }
-
-    public void displayOneDevice(PlanetSwitchDevice device){
-        this.discoveredDevices.add(device);
-        tableModel.addRow(new Object[]{
-                device.getMacAddress(),
-                device.getDeviceName(),
-                device.getVersion(),
-                device.getIpAddress(),
-                device.getNetMask(),
-                device.getGateway(),
-                device.getDescription(),
-                device.getSystemLocation() != null ? device.getSystemLocation() : "N/A",
-                device.getSystemUptime() != null ? device.getSystemUptime() : "N/A"
-        });
         updateDeviceCount();
         updateButtonStates();
     }
@@ -696,7 +717,6 @@ public class MainWindow extends JFrame {
     private void refreshUI() {
         NetworkInterfaceCustom selectedAdapter = (NetworkInterfaceCustom) adapterComboBox.getSelectedItem();
         List<PlanetSwitchDevice> currentDevices = new ArrayList<>(discoveredDevices);
-
 
         getContentPane().removeAll(); // Clear and rebuild
 
