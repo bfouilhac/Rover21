@@ -30,7 +30,7 @@ public class MainWindow extends JFrame {
     private static final Font TABLE_FONT = new Font("Segoe UI", Font.PLAIN, 12);
     private static final int BUTTON_WIDTH = 130;
     private static final int BUTTON_HEIGHT = 32;
-    private static final Color ALTERNATE_TABLE_COLOR = new Color(238, 226, 215);
+    private static final Color ALTERNATE_TABLE_COLOR = new Color(224, 224, 224);
 
     private static final Logger logger = LoggerFactory.getLogger(MainWindow.class);
 

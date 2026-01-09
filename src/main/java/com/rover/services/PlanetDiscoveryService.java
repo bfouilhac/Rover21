@@ -35,13 +35,6 @@ public class PlanetDiscoveryService {
     };
 
     /**
-     * Getter
-     * @return the current limit time used for the discovery.
-     * @see com.rover.controller.MainController#onDiscoverClicked(NetworkInterfaceCustom)
-     */
-    public int getTimeout() {return socketTimeout;}
-
-    /**
      * Sends the magic packet by broadcast and waits for the device's response.
      * @param localAddress IPv4 Address of the network interface from which the magic packet will be sent.
      * @return a list of all the PlanetSwitchDevices found.
