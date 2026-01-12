@@ -47,7 +47,7 @@ public class MainWindow extends JFrame {
     private JTable devicesTable;
     private DefaultTableModel tableModel;
 
-    private Map<String, Map<String, JCheckBox>> deviceCheckboxes = new HashMap<>();
+    private final Map<String, Map<String, JCheckBox>> deviceCheckboxes = new HashMap<>();
 
 
     // Actions buttons
@@ -804,8 +804,8 @@ public class MainWindow extends JFrame {
         discoveredDevices.set(row, device);
 
         // Mettre à jour la ligne dans le tableau
-        tableModel.setValueAt(device.getMacAddress(), row, 0);
-        tableModel.setValueAt(device.getDeviceName(), row, 1);
+        tableModel.setValueAt(device.getDeviceName(), row, 0);
+        tableModel.setValueAt(device.getMacAddress(), row, 1);
         tableModel.setValueAt(device.getVersion(), row, 2);
         tableModel.setValueAt(device.getIpAddress(), row, 3);
         tableModel.setValueAt(device.getNetMask(), row, 4);
@@ -826,8 +826,8 @@ public class MainWindow extends JFrame {
         discoveredDevices.add(device);
 
         tableModel.addRow(new Object[]{
-                device.getMacAddress(),
                 device.getDeviceName(),
+                device.getMacAddress(),
                 device.getVersion(),
                 device.getIpAddress(),
                 device.getNetMask(),
@@ -839,15 +839,6 @@ public class MainWindow extends JFrame {
 
         updateDeviceCount();
         logger.debug("Added device row: {}", device.getDeviceName());
-    }
-
-    /**
-     * Returns the current number of discovered devices.
-     *
-     * @return the device count
-     */
-    public int getDeviceCount() {
-        return discoveredDevices.size();
     }
 
     private void updateDeviceCount() {
