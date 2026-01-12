@@ -5,6 +5,7 @@ import com.rover.model.PlanetSwitchDevice;
 import com.rover.services.DiscoveryCallback;
 import com.rover.services.NetworkAdapterService;
 import com.rover.services.PlanetDiscoveryService;
+import com.rover.services.ProtocolTestService;
 import com.rover.ui.MainWindow;
 import com.rover.utils.LanguageManager;
 import com.rover.utils.PreferencesManager;
@@ -150,8 +151,7 @@ public class MainController implements MainWindow.UIEventListener {
             protected List<PlanetSwitchDevice> doInBackground() {
                 // Countdown thread
                 Thread countdownThread = new Thread(() -> {
-                    int timeoutSeconds = PreferencesManager.getDiscoveryTimeout() / 1000;
-                    for (int i = timeoutSeconds; i >= 0; i--) {
+                    for (int i = PreferencesManager.getDiscoveryTimeout(); i >= 0; i--) {
                         try {
                             updateTimeRemaining(i);
                             Thread.sleep(1000);
@@ -170,6 +170,15 @@ public class MainController implements MainWindow.UIEventListener {
                     @Override
                     public void onDeviceEnriched(PlanetSwitchDevice device) {
                         publish(device);
+                    }
+
+                    @Override
+                    public void onProtocolsTestedCallback(PlanetSwitchDevice device, ProtocolTestService.ProtocolTestResult result) {
+                        // Mettre à jour les checkboxes dans l'UI
+                        view.setProtocolStatus(device.getMacAddress(), "telnet", result.isTelnetAvailable());
+                        view.setProtocolStatus(device.getMacAddress(), "ssh", result.isSshAvailable());
+                        view.setProtocolStatus(device.getMacAddress(), "http", result.isHttpAvailable());
+                        view.setProtocolStatus(device.getMacAddress(), "https", result.isHttpsAvailable());
                     }
                 };
 
@@ -232,6 +241,7 @@ public class MainController implements MainWindow.UIEventListener {
             view.setStatusMessage(lang.get("status.scanning_progress_singular", remainingSeconds));
         }
     }
+
 
     /**
      * Handles the update device button click event.

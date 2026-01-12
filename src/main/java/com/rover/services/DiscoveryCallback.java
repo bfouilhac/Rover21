@@ -17,9 +17,17 @@ public interface DiscoveryCallback {
 
     /**
      * Called when SNMP enrichment completes for a device.
-     * This method is invoked from the SNMP enrichment thread.
+     * This method is invoked from the device enrichment thread.
      *
      * @param device the device with updated SNMP data
      */
     void onDeviceEnriched(PlanetSwitchDevice device);
+
+    /**
+     * Called when all the tests for differents protocols are completed.
+     * This method is invoked from the device enrichment thread.
+     * @param device
+     * @param result
+     */
+    void onProtocolsTestedCallback(PlanetSwitchDevice device, ProtocolTestService.ProtocolTestResult result);
 }

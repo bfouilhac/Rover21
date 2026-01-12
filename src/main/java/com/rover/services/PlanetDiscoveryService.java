@@ -1,6 +1,7 @@
 package com.rover.services;
 
 import com.rover.model.PlanetSwitchDevice;
+import com.rover.utils.LanguageManager;
 import com.rover.utils.PreferencesManager;
 
 import org.slf4j.Logger;
@@ -29,6 +30,7 @@ import java.util.Set;
 public class PlanetDiscoveryService {
 
     private static final Logger logger = LoggerFactory.getLogger(PlanetDiscoveryService.class);
+    private static final LanguageManager lang = LanguageManager.getInstance();
 
     private static final int MAX_PACKET_SIZE = 1024;
 
@@ -49,14 +51,14 @@ public class PlanetDiscoveryService {
      * </p>
      *
      * @param localAddress the IPv4 address of the network interface to use for discovery
-     * @return a list of discovered PlanetSwitchDevice objects, may be empty if no devices found
+     * @return a list of discovered PlanetSwitchDevice objects may be empty if no devices found
      * @see #sendDiscoveryPacket(DatagramSocket, int)
      * @see #parseResponse(DatagramPacket)
      * @see PreferencesManager#getDiscoveryTimeout()
      */
     public List<PlanetSwitchDevice> discoverDevices(String localAddress, DiscoveryCallback callback) {
         // Load configuration from preferences
-        int socketTimeout = PreferencesManager.getDiscoveryTimeout();
+        int socketTimeout = PreferencesManager.getDiscoveryTimeout() * 1000;
         int responsePort = PreferencesManager.getDiscoveryListenPort();
         int discoveryPort = PreferencesManager.getDiscoverySendPort();
 
@@ -71,7 +73,7 @@ public class PlanetDiscoveryService {
             // Set up receive socket
             try {
                 receiveSocket = new DatagramSocket(responsePort);
-                receiveSocket.setSoTimeout(socketTimeout);
+                receiveSocket.setSoTimeout(socketTimeout); // timeout convert to ms
                 receiveSocket.setBroadcast(true);
                 logger.info("Receive socket bound to port: {}", responsePort);
             } catch (SocketException e) {
@@ -84,13 +86,11 @@ public class PlanetDiscoveryService {
             sendSocket.setBroadcast(true);
             logger.info("Send socket created on port: {}", sendSocket.getLocalPort());
 
-            // Send the discovery packet
-            sendDiscoveryPacket(sendSocket, discoveryPort);
+            sendDiscoveryPacket(sendSocket, discoveryPort); // Send the discovery packet
 
             // Listen for responses
             long startTime = System.currentTimeMillis();
-            logger.info("Listening for responses on port {} for {} ms...",
-                    responsePort, socketTimeout);
+            logger.info("Listening for responses on port {} for {} ms...", responsePort, socketTimeout);
 
             while (System.currentTimeMillis() - startTime < socketTimeout) {
                 try {
@@ -136,43 +136,6 @@ public class PlanetDiscoveryService {
         }
         logger.info("Discovery COMPLETE. Found {} PLANET device(s)", devices.size());
         return devices;
-    }
-
-    /**
-     * Enriches a device with SNMP data in a separate thread.
-     * Calls the callback when enrichment completes.
-     *
-     * @param device the device to enrich
-     * @param callback the callback to notify (can be null)
-     */
-    private void enrichDeviceAsync(PlanetSwitchDevice device, DiscoveryCallback callback) throws InterruptedException {
-        Thread enrichmentThread = new Thread(() -> { // Create a new thread for SNMP enrichment
-            SNMPService snmpService = new SNMPService();
-            try {
-                if (snmpService.testSNMPConnectivity(device.getIpAddress())) {
-                    snmpService.enrichDeviceWithSNMP(device);
-                    logger.info("Device {} enriched with SNMP data", device.getIpAddress());
-
-                    // Notify callback
-                    if (callback != null) {
-                        callback.onDeviceEnriched(device);
-                    }
-                } else {
-                    device.setSystemLocation("SNMP not available");
-                    device.setSystemUptime("N/A");
-                }
-            } catch (Exception e) {
-                logger.error("Failed to enrich {} with SNMP: {}",
-                        device.getIpAddress(), e.getMessage());
-                device.setSystemLocation("Error");
-                device.setSystemUptime("Error");
-            } finally {
-                snmpService.close();
-            }
-        });
-        enrichmentThread.setName("SNMP-Enrichment-" + device.getIpAddress());
-        enrichmentThread.start();
-        enrichmentThread.join(PreferencesManager.getSnmpTimeout());
     }
 
     /**
@@ -348,36 +311,58 @@ public class PlanetDiscoveryService {
     }
 
     /**
-     * Enriches discovered devices with additional SNMP data.
-     * <p>
+     * Enriches a device with SNMP data and tests protocols in a separate thread.
+     * Sets "Timeout" values if SNMP doesn't respond within timeout period.
      *
-     * @param devices the list of devices to enrich
-     * @see SNMPService#enrichDeviceWithSNMP(PlanetSwitchDevice)
+     * @param device the device to enrich
+     * @param callback the callback to notify (can be null)
      */
-    private void enrichDevicesWithSNMP(List<PlanetSwitchDevice> devices) {
-        logger.info("Starting SNMP enrichment for {} device(s)", devices.size());
-        SNMPService snmpService = new SNMPService();
+    private void enrichDeviceAsync(PlanetSwitchDevice device, DiscoveryCallback callback) throws InterruptedException {
+        Thread enrichmentThread = new Thread(() -> {
+            SNMPService snmpService = null;
+            ProtocolTestService protocolService = new ProtocolTestService();
+            boolean enriched = false;
 
-        for (PlanetSwitchDevice device : devices) {
             try {
-                // Test SNMP connectivity first
+                snmpService = new SNMPService();
                 if (snmpService.testSNMPConnectivity(device.getIpAddress())) {
                     snmpService.enrichDeviceWithSNMP(device);
+                    enriched = true;
                     logger.info("Device {} enriched with SNMP data", device.getIpAddress());
                 } else {
                     logger.warn("SNMP not accessible for {}", device.getIpAddress());
-                    device.setSystemLocation("SNMP not available");
-                    device.setSystemUptime("N/A");
+                    device.setSystemLocation(lang.get("error.snmp_available"));
+                    device.setSystemUptime(lang.get("error.snmp_available"));
+                }
+                logger.info("Testing protocols for device: {}", device.getIpAddress());
+                ProtocolTestService.ProtocolTestResult protocolResult = protocolService.testAllProtocols(device.getIpAddress());
+                if (callback != null) {
+                    callback.onProtocolsTestedCallback(device, protocolResult); // Notify callback with protocol results
                 }
             } catch (Exception e) {
-                logger.error("Failed to enrich {} with SNMP: {}",
-                        device.getIpAddress(), e.getMessage());
+                logger.error("Failed to enrich {} with SNMP: {}", device.getIpAddress(), e.getMessage());
                 device.setSystemLocation("Error");
                 device.setSystemUptime("Error");
+            } finally {
+                if (snmpService != null) {
+                    snmpService.close();
+                }
+                if (!enriched) {
+                    if (device.getSystemLocation() == null || device.getSystemLocation().equals("Loading...")) {
+                        device.setSystemLocation("Timeout");
+                    }
+                    if (device.getSystemUptime() == null || device.getSystemUptime().equals("Loading...")) {
+                        device.setSystemUptime("Timeout");
+                    }
+                }
+                if (callback != null) {
+                    callback.onDeviceEnriched(device); // Notify callback for SNMP enrichment
+                }
             }
-        }
-
-        snmpService.close();
-        logger.info("SNMP enrichment completed");
+        });
+        enrichmentThread.setName("Enrichment-" + device.getIpAddress());
+        enrichmentThread.setDaemon(true);
+        enrichmentThread.start();
+        enrichmentThread.join(1000); // 1000ms to terminate
     }
 }

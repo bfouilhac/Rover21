@@ -515,8 +515,8 @@ public class MainWindow extends JFrame {
                     device.getNetMask(),
                     device.getGateway(),
                     device.getDescription(),
-                    device.getSystemLocation() != null ? device.getSystemLocation() : "N/A",
-                    device.getSystemUptime() != null ? device.getSystemUptime() : "N/A",
+                    device.getSystemLocation() != null ? device.getSystemLocation() : lang.get("table.snmp_error"),
+                    device.getSystemUptime() != null ? device.getSystemUptime() : lang.get("table.snmp_error"),
                     false,
                     false,
                     false,
@@ -544,6 +544,34 @@ public class MainWindow extends JFrame {
 
         if (scanning) {
             statusLabel.setText(lang.get("status.scanning", ""));
+        }
+    }
+
+    /**
+     * Updates protocol checkbox for a specific device.
+     *
+     * @param macAddress the device MAC address
+     * @param protocol the protocol ("telnet", "ssh", "http", "https")
+     * @param isAvailable true if protocol is available
+     * @implNote need to call the protocols tests before using this method
+     * @see com.rover.services.ProtocolTestService
+     */
+    public void setProtocolStatus(String macAddress, String protocol, boolean isAvailable) {
+        int row = findDeviceRowByMac(macAddress);
+
+        if (row >= 0) {
+            int columnIndex = switch (protocol.toLowerCase()) {
+                case "telnet" -> 9;
+                case "ssh" -> 10;
+                case "http" -> 11;
+                case "https" -> 12;
+                default -> -1;
+            };
+
+            if (columnIndex >= 0) {
+                tableModel.setValueAt(isAvailable, row, columnIndex);
+                logger.debug("Set {} status to {} for device at row {}", protocol, isAvailable, row);
+            }
         }
     }
 
@@ -800,19 +828,23 @@ public class MainWindow extends JFrame {
      * @param device the updated device data
      */
     private void updateDeviceRow(int row, PlanetSwitchDevice device) {
-        // Mettre à jour le device dans la liste
         discoveredDevices.set(row, device);
 
-        // Mettre à jour la ligne dans le tableau
-        tableModel.setValueAt(device.getDeviceName(), row, 0);
-        tableModel.setValueAt(device.getMacAddress(), row, 1);
+        tableModel.setValueAt(device.getMacAddress(), row, 0);
+        tableModel.setValueAt(device.getDeviceName(), row, 1);
         tableModel.setValueAt(device.getVersion(), row, 2);
         tableModel.setValueAt(device.getIpAddress(), row, 3);
         tableModel.setValueAt(device.getNetMask(), row, 4);
         tableModel.setValueAt(device.getGateway(), row, 5);
         tableModel.setValueAt(device.getDescription(), row, 6);
-        tableModel.setValueAt(device.getSystemLocation() != null ? device.getSystemLocation() : "N/A", row, 7);
-        tableModel.setValueAt(device.getSystemUptime() != null ? device.getSystemUptime() : "N/A", row, 8);
+
+        String location = device.getSystemLocation();
+        if (location == null) location = "N/A";
+        tableModel.setValueAt(location, row, 7);
+
+        String uptime = device.getSystemUptime();
+        if (uptime == null) uptime = "N/A";
+        tableModel.setValueAt(uptime, row, 8);
 
         logger.debug("Updated device row: {}", device.getDeviceName());
     }
@@ -826,15 +858,19 @@ public class MainWindow extends JFrame {
         discoveredDevices.add(device);
 
         tableModel.addRow(new Object[]{
-                device.getDeviceName(),
                 device.getMacAddress(),
+                device.getDeviceName(),
                 device.getVersion(),
                 device.getIpAddress(),
                 device.getNetMask(),
                 device.getGateway(),
                 device.getDescription(),
                 device.getSystemLocation() != null ? device.getSystemLocation() : "Loading...",
-                device.getSystemUptime() != null ? device.getSystemUptime() : "Loading..."
+                device.getSystemUptime() != null ? device.getSystemUptime() : "Loading...",
+                Boolean.FALSE,
+                Boolean.FALSE,
+                Boolean.FALSE,
+                Boolean.FALSE
         });
 
         updateDeviceCount();

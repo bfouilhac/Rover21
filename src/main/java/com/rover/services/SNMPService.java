@@ -52,9 +52,12 @@ public class SNMPService {
             TransportMapping<?> transport = new DefaultUdpTransportMapping();
             this.snmp = new Snmp(transport);
             transport.listen();
+            Thread.sleep(250); // Small sleep to allow the transport to start listening
             logger.info("SNMP service initialized");
         } catch (IOException e) {
             logger.error("Failed to initialize SNMP service", e);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
         }
     }
 
@@ -247,14 +250,11 @@ public class SNMPService {
     }
 
     /**
-     * Performs an SNMP GET operation to retrieve a value for a specific OID.
-     * <p>
+     * Performs an SNMP GET operation with timeout handling.
      *
-     * @param target the SNMP target configuration
-     * @param oid the Object Identifier to query (e.g., "1.3.6.1.2.1.1.6.0")
-     * @return the value as a string, or null if the query fails
-     * @see CommunityTarget
-     * @see org.snmp4j.PDU
+     * @param target the SNMP target
+     * @param oid the OID to query
+     * @return the value as a string, or null if a query fails or times out
      */
     private String getSNMPValue(CommunityTarget target, String oid) {
         try {
@@ -262,7 +262,11 @@ public class SNMPService {
             pdu.add(new VariableBinding(new OID(oid)));
             pdu.setType(PDU.GET);
 
+            long startTime = System.currentTimeMillis();
             ResponseEvent event = snmp.send(pdu, target);
+            long elapsedTime = System.currentTimeMillis() - startTime;
+
+            logger.debug("SNMP query for OID {} took {}ms", oid, elapsedTime);
 
             if (event != null && event.getResponse() != null) {
                 PDU response = event.getResponse();
@@ -274,7 +278,7 @@ public class SNMPService {
                     logger.warn("SNMP error for OID {}: {}", oid, response.getErrorStatusText());
                 }
             } else {
-                logger.warn("SNMP timeout for OID {}", oid);
+                logger.warn("SNMP timeout for OID {} after {}ms", oid, elapsedTime);
             }
         } catch (IOException e) {
             logger.error("SNMP query failed for OID {}: {}", oid, e.getMessage());

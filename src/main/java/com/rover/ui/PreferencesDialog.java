@@ -124,14 +124,12 @@ public class PreferencesDialog extends JDialog {
         panel.add(new JLabel(lang.get("preferences.discovery_timeout")), gbc);
 
         gbc.gridx = 1; gbc.weightx = 0;
-        discoveryTimeoutSpinner = new JSpinner(new SpinnerNumberModel(
-                PreferencesManager.getDiscoveryTimeout(), 1000, 60000, 100
-        ));
+        discoveryTimeoutSpinner = new JSpinner(new SpinnerNumberModel(PreferencesManager.getDiscoveryTimeout(), 1, 60000, 1));
         discoveryTimeoutSpinner.setPreferredSize(new Dimension(80, 25));
         panel.add(discoveryTimeoutSpinner, gbc);
 
         gbc.gridx = 2; gbc.weightx = 1.0;
-        panel.add(new JLabel(lang.get("preferences.milliseconds")), gbc);
+        panel.add(new JLabel(lang.get("preferences.seconds")), gbc);
 
         // Send port setting
         gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0;
