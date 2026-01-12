@@ -11,10 +11,8 @@ import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.table.*;
 import java.awt.*;
-import java.util.ArrayList;
+import java.util.*;
 import java.util.List;
-import java.util.HashMap;
-import java.util.Map;
 
 import static com.rover.utils.PreferencesManager.*;
 
@@ -49,6 +47,8 @@ public class MainWindow extends JFrame {
 
     private final Map<String, Map<String, JCheckBox>> deviceCheckboxes = new HashMap<>();
 
+    // Protocol status cache (MAC -> Protocol -> Status)
+    private final Map<String, Map<String, Boolean>> protocolStatusCache = new HashMap<>();
 
     // Actions buttons
     private JButton updateDeviceBtn;
@@ -122,8 +122,7 @@ public class MainWindow extends JFrame {
      */
     private void saveWindowState() {
         PreferencesManager.saveWindowSize(getWidth(), getHeight());
-        logger.info("Window state saved: {}x{} at ({}, {})",
-                getWidth(), getHeight(), getX(), getY());
+        logger.info("Window state saved: {}x{} at ({}, {})", getWidth(), getHeight(), getX(), getY());
     }
 
     /**
@@ -321,9 +320,11 @@ public class MainWindow extends JFrame {
         ));
         statusBar.setBackground(new Color(227, 242, 253));
 
-        statusLabel = new JLabel(lang.get("status.ready"));
-        statusLabel.setFont(MODERN_FONT);
-        statusLabel.setForeground(new Color(25, 118, 210));
+        if (statusLabel == null){
+            statusLabel = new JLabel(lang.get("status.ready"));
+            statusLabel.setFont(MODERN_FONT);
+            statusLabel.setForeground(new Color(25, 118, 210));
+        }
 
         deviceCountLabel = new JLabel(lang.get("table.devices_found", 0));
         deviceCountLabel.setFont(MODERN_FONT);
@@ -580,7 +581,37 @@ public class MainWindow extends JFrame {
                 tableModel.setValueAt(isAvailable, row, columnIndex);
                 logger.debug("Set {} status to {} for device at row {}", protocol, isAvailable, row);
             }
+
+            protocolStatusCache.computeIfAbsent(macAddress, k -> new HashMap<>())
+                    .put(protocol.toLowerCase(), isAvailable);
         }
+    }
+
+    /**
+     * Restores protocol checkbox status from cache after UI refresh.
+     */
+    private void restoreProtocolStatus() {
+        protocolStatusCache.forEach((macAddress, protocols) -> {
+            protocols.forEach((protocol, status) -> {
+                int row = findDeviceRowByMac(macAddress);
+
+                if (row >= 0) {
+                    int columnIndex = switch (protocol) {
+                        case "telnet" -> 9;
+                        case "ssh" -> 10;
+                        case "http" -> 11;
+                        case "https" -> 12;
+                        default -> -1;
+                    };
+
+                    if (columnIndex >= 0) {
+                        tableModel.setValueAt(status, row, columnIndex);
+                    }
+                }
+            });
+        });
+
+        logger.debug("Restored protocol status for {} devices", protocolStatusCache.size());
     }
 
     /**
@@ -754,7 +785,9 @@ public class MainWindow extends JFrame {
         NetworkInterfaceCustom selectedAdapter = (NetworkInterfaceCustom) adapterComboBox.getSelectedItem();
         List<PlanetSwitchDevice> currentDevices = new ArrayList<>(discoveredDevices);
 
-        getContentPane().removeAll(); // Clear and rebuild
+        String currentStatus = statusLabel.getText();
+
+        getContentPane().removeAll();
 
         // Recreate all components
         createMenuBar();
@@ -767,7 +800,12 @@ public class MainWindow extends JFrame {
         if (selectedAdapter != null) {
             adapterComboBox.setSelectedItem(selectedAdapter);
         }
+
         displayDevices(currentDevices);
+
+        restoreProtocolStatus();
+
+        statusLabel.setText(currentStatus);
 
         // Update title
         setTitle(lang.get("window.title"));
