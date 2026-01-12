@@ -1,5 +1,6 @@
 package com.rover.services;
 
+import com.rover.utils.PreferencesManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,9 +44,7 @@ public class ProtocolTestService {
      * @param ipAddress the device IP address to test
      * @return true if Telnet port 23 is open and accepting connections
      */
-    public boolean isTelnetAvailable(String ipAddress) {
-        return isPortOpen(ipAddress, TELNET_PORT, "Telnet");
-    }
+    public boolean isTelnetAvailable(String ipAddress) {return isPortOpen(ipAddress, PreferencesManager.getTelnetPort(), "Telnet");}
 
     /**
      * Tests if SSH is available on the device.
@@ -58,9 +57,7 @@ public class ProtocolTestService {
      * @param ipAddress the device IP address to test
      * @return true if SSH port 22 is open and accepting connections
      */
-    public boolean isSSHAvailable(String ipAddress) {
-        return isPortOpen(ipAddress, SSH_PORT, "SSH");
-    }
+    public boolean isSSHAvailable(String ipAddress) {return isPortOpen(ipAddress, PreferencesManager.getSshPort(), "SSH");}
 
     /**
      * Tests if HTTP/HTTPS is available on the device.
@@ -254,9 +251,7 @@ public class ProtocolTestService {
             return httpAvailable;
         }
 
-        public void setHttpAvailable(boolean httpAvailable) {
-            this.httpAvailable = httpAvailable;
-        }
+        public void setHttpAvailable(boolean httpAvailable) {this.httpAvailable = httpAvailable;}
 
         public boolean isHttpsAvailable() {
             return httpsAvailable;

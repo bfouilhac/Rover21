@@ -225,10 +225,9 @@ public class PlanetDiscoveryService {
             }
 
             device.setOnline(true);
-            device.setSystemLocation(lang.get("info.loading_snmp"));
-            device.setSystemUptime(lang.get("info.loading_snmp"));
+            device.setSystemLocation(lang.get("info.loading_snmp")); // Default value before SNMP enrichment
+            device.setSystemUptime(lang.get("info.loading_snmp")); // Default value before SNMP enrichment
             return device;
-
         } catch (Exception e) {
             logger.error("Error parsing device response", e);
             return null;

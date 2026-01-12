@@ -48,6 +48,131 @@ public class PreferencesManager {
     private static final String DISCOVERY_LISTEN_PORT_KEY = "discovery.listen.port";
     private static final String DISCOVERY_TIMEOUT_KEY = "discovery.timeout";
 
+    // SNMP v3 preference keys
+    private static final String SNMP_VERSION_KEY = "snmp.version";
+    private static final String SNMP_V3_USERNAME_KEY = "snmp.v3.username";
+    private static final String SNMP_V3_PASSWORD_KEY = "snmp.v3.password";
+
+    // Protocols keys
+    private static final String SSH_PORT_KEY = "protocol.ssh.port";
+    private static final String TELNET_PORT_KEY = "protocol.telnet.port";
+
+    /**
+     * Retrieves the SNMP version.
+     *
+     * @return the SNMP version ("v1", "v2c", or "v3"), default: "v2c"
+     */
+    public static String getSnmpVersion() {
+        return prefs.get(SNMP_VERSION_KEY, "v2c");
+    }
+
+    /**
+     * Saves the SNMP version.
+     *
+     * @param version the SNMP version ("v1", "v2c", or "v3")
+     */
+    public static void saveSnmpVersion(String version) {
+        try {
+            prefs.put(SNMP_VERSION_KEY, version);
+            prefs.flush();
+            logger.info("SNMP version saved: {}", version);
+        } catch (BackingStoreException e) {
+            logger.error("Failed to save SNMP version", e);
+        }
+    }
+
+    /**
+     * Retrieves the SNMPv3 username.
+     *
+     * @return the SNMPv3 username, default: empty string
+     */
+    public static String getSnmpV3Username() {
+        return prefs.get(SNMP_V3_USERNAME_KEY, "");
+    }
+
+    /**
+     * Saves the SNMPv3 username.
+     *
+     * @param username the SNMPv3 username
+     */
+    public static void saveSnmpV3Username(String username) {
+        try {
+            prefs.put(SNMP_V3_USERNAME_KEY, username);
+            prefs.flush();
+        } catch (BackingStoreException e) {
+            logger.error("Failed to save SNMPv3 username", e);
+        }
+    }
+
+    /**
+     * Retrieves the SNMPv3 password.
+     *
+     * @return the SNMPv3 password, default: empty string
+     */
+    public static String getSnmpV3Password() {
+        return prefs.get(SNMP_V3_PASSWORD_KEY, "");
+    }
+
+    /**
+     * Saves the SNMPv3 password.
+     *
+     * @param password the SNMPv3 password
+     */
+    public static void saveSnmpV3Password(String password) {
+        try {
+            prefs.put(SNMP_V3_PASSWORD_KEY, password);
+            prefs.flush();
+        } catch (BackingStoreException e) {
+            logger.error("Failed to save SNMPv3 password", e);
+        }
+    }
+
+    /**
+     * Retrieves the SSH port.
+     *
+     * @return the SSH port (default: 22)
+     */
+    public static int getSshPort() {
+        return prefs.getInt(SSH_PORT_KEY, 22);
+    }
+
+    /**
+     * Saves the SSH port.
+     *
+     * @param port the SSH port
+     */
+    public static void saveSshPort(int port) {
+        try {
+            prefs.putInt(SSH_PORT_KEY, port);
+            prefs.flush();
+        } catch (BackingStoreException e) {
+            logger.error("Failed to save SSH port", e);
+        }
+    }
+
+    /**
+     * Retrieves the Telnet port.
+     *
+     * @return the Telnet port (default: 23)
+     */
+    public static int getTelnetPort() {
+        return prefs.getInt(TELNET_PORT_KEY, 23);
+    }
+
+    /**
+     * Saves the Telnet port.
+     *
+     * @param port the Telnet port
+     */
+    public static void saveTelnetPort(int port) {
+        try {
+            prefs.putInt(TELNET_PORT_KEY, port);
+            prefs.flush();
+        } catch (BackingStoreException e) {
+            logger.error("Failed to save Telnet port", e);
+        }
+    }
+
     /**
      * Saves the user's preferred language.
      * <p>

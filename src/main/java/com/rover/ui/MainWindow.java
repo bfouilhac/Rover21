@@ -866,8 +866,8 @@ public class MainWindow extends JFrame {
         discoveredDevices.add(device);
 
         tableModel.addRow(new Object[]{
-                device.getMacAddress(),
                 device.getDeviceName(),
+                device.getMacAddress(),
                 device.getVersion(),
                 device.getIpAddress(),
                 device.getNetMask(),
@@ -905,7 +905,7 @@ public class MainWindow extends JFrame {
         PreferencesDialog dialog = new PreferencesDialog(this);
         dialog.setVisible(true);
         dialog.toFront();
-        if (dialog.wasApplied()) { // Si l'utilisateur a appliqué des changements
+        if (dialog.wasApplied()) {
             showInfo(
                     lang.get("preferences.applied_title"),
                     lang.get("preferences.applied_message")

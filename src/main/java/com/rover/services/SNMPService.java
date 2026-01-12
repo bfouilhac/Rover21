@@ -6,7 +6,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.snmp4j.*;
 import org.snmp4j.event.ResponseEvent;
+import org.snmp4j.mp.MPv3;
 import org.snmp4j.mp.SnmpConstants;
+import org.snmp4j.security.*;
 import org.snmp4j.smi.*;
 import org.snmp4j.transport.DefaultUdpTransportMapping;
 
@@ -33,8 +35,6 @@ public class SNMPService {
     private static final String OID_SYS_UPTIME = "1.3.6.1.2.1.1.3.0";
     private static final String OID_SYS_LOCATION = "1.3.6.1.2.1.1.6.0";
 
-    private int retries = 2;
-
     private Snmp snmp;
 
     /**
@@ -51,13 +51,25 @@ public class SNMPService {
         try {
             TransportMapping<?> transport = new DefaultUdpTransportMapping();
             this.snmp = new Snmp(transport);
+
+            String version = PreferencesManager.getSnmpVersion();
+
+            if ("v3".equals(version)) {
+                USM usm = new USM(SecurityProtocols.getInstance(), new OctetString(MPv3.createLocalEngineID()), 0); // Configure USM (User-based Security Model) for SNMPv3
+                SecurityModels.getInstance().addSecurityModel(usm);
+                logger.info("SNMP service initialized with SNMPv3");
+            } else {
+                logger.info("SNMP service initialized with SNMPv{}", version);
+            }
+
             transport.listen();
-            Thread.sleep(250); // Small sleep to allow the transport to start listening
-            logger.info("SNMP service initialized");
+            Thread.sleep(100); // Wait for transport to be ready
+
         } catch (IOException e) {
             logger.error("Failed to initialize SNMP service", e);
         } catch (InterruptedException e) {
-            throw new RuntimeException(e);
+            logger.warn("SNMP initialization interrupted", e);
+            Thread.currentThread().interrupt();
         }
     }
 
@@ -77,27 +89,29 @@ public class SNMPService {
     }
 
     /**
-     * Enriches a device with additional SNMP data.
+     * Enriches a device with SNMP data using a specific community string.
+     * Supports SNMPv1, SNMPv2c, and SNMPv3.
      *
      * @param device the device to enrich
-     * @param community the SNMP community string (typically "public" for read-only access)
-     * @return the enriched device with SNMP data populated
-     * @see #getSNMPValue(CommunityTarget, String)
-     * @see #formatUptime(String)
+     * @param community the SNMP community string (used for v1/v2c only)
+     * @return the enriched device, or original device if SNMP fails
      */
     public PlanetSwitchDevice enrichDeviceWithSNMP(PlanetSwitchDevice device, String community) {
         if (device == null || device.getIpAddress() == null) {
             logger.warn("Cannot enrich null device or device without IP");
             return device;
         }
-
         logger.info("Enriching device {} via SNMP", device.getIpAddress());
-
         try {
-            CommunityTarget target = createTarget(device.getIpAddress(), community);
+            String version = PreferencesManager.getSnmpVersion();
+            if ("v3".equals(version)) {
+                addSNMPv3User();
+            }
+
+            Target target = createTarget(device.getIpAddress(), community);
 
             // Query System Location
-            String sysLocation = getSNMPValue(target, OID_SYS_LOCATION);
+            String sysLocation = getSNMPValue((CommunityTarget) target, OID_SYS_LOCATION);
             if (sysLocation != null && !sysLocation.isEmpty()) {
                 device.setSystemLocation(sysLocation);
                 logger.info("System Location: {}", sysLocation);
@@ -107,7 +121,7 @@ public class SNMPService {
             }
 
             // Query System Uptime
-            String sysUptime = getSNMPValue(target, OID_SYS_UPTIME);
+            String sysUptime = getSNMPValue((CommunityTarget) target, OID_SYS_UPTIME);
             if (sysUptime != null && !sysUptime.isEmpty()) {
                 String formattedUptime = formatUptime(sysUptime);
                 device.setSystemUptime(formattedUptime);
@@ -123,7 +137,6 @@ public class SNMPService {
             logger.error("Failed to enrich device {} via SNMP: {}",
                     device.getIpAddress(), e.getMessage());
 
-            // Set default values on error
             if (device.getSystemLocation() == null) {
                 device.setSystemLocation("N/A");
             }
@@ -133,6 +146,44 @@ public class SNMPService {
         }
 
         return device;
+    }
+
+    /**
+     * Adds SNMPv3 user credentials to the SNMP session.
+     * This must be called before making SNMPv3 requests.
+     */
+    private void addSNMPv3User() {
+        String username = PreferencesManager.getSnmpV3Username();
+        String password = PreferencesManager.getSnmpV3Password();
+
+        if (username.isEmpty()) {
+            logger.warn("SNMPv3 username is empty");
+            return;
+        }
+
+        // Create a USM user with authentication and privacy
+        OctetString userName = new OctetString(username);
+
+        // Authentication protocol: MD5
+        OID authProtocol = AuthMD5.ID;
+        OctetString authPassphrase = new OctetString(password);
+
+        // Privacy protocol: DES
+        OID privProtocol = PrivDES.ID;
+        OctetString privPassphrase = new OctetString(password);
+
+        UsmUser user = new UsmUser(
+                userName,
+                authProtocol,
+                authPassphrase,
+                privProtocol,
+                privPassphrase
+        );
+
+        // Add user to USM
+        snmp.getUSM().addUser(userName, user);
+
+        logger.debug("SNMPv3 user added: {}", username);
     }
 
     /**
@@ -202,21 +253,16 @@ public class SNMPService {
         return testSNMPConnectivity(ipAddress, DEFAULT_COMMUNITY);
     }
 
-    /**
-     * Tests SNMP connectivity to a device using a specific community string.
-     * <p>
-     * This method sends a simple SNMP GET request for the system uptime OID.
-     * If the device responds with a valid value, SNMP connectivity is confirmed.
-     * </p>
-     *
-     * @param ipAddress the IP address of the device to test
-     * @param community the SNMP community string to use
-     * @return true if the device responds successfully, false otherwise
-     * @see #getSNMPValue(CommunityTarget, String)
-     */
     public boolean testSNMPConnectivity(String ipAddress, String community) {
         try {
-            CommunityTarget target = createTarget(ipAddress, community);
+            String version = PreferencesManager.getSnmpVersion();
+
+            // Add SNMPv3 user if needed
+            if ("v3".equals(version)) {
+                addSNMPv3User();
+            }
+
+            Target target = createTarget(ipAddress, community);
             String value = getSNMPValue(target, OID_SYS_UPTIME);
             return value != null && !value.isEmpty();
         } catch (Exception e) {
@@ -226,39 +272,96 @@ public class SNMPService {
     }
 
     /**
-     * Creates an SNMP target configuration for a specific device.
+     * Creates an SNMP target based on the configured SNMP version.
      *
      * @param ipAddress the target device IP address
-     * @param community the SNMP community string
-     * @return a configured CommunityTarget ready for SNMP queries
-     * @see PreferencesManager#getPortSNMP()
-     * @see PreferencesManager#getSnmpTimeout()
+     * @param community the community string (used for v1/v2c only)
+     * @return a Target object (CommunityTarget or UserTarget)
      */
-    private CommunityTarget createTarget(String ipAddress, String community) {
-        Address targetAddress = GenericAddress.parse(
-                "udp:" + ipAddress + "/" + PreferencesManager.getPortSNMP()
-        );
+    private Target createTarget(String ipAddress, String community) {
+        String version = PreferencesManager.getSnmpVersion();
 
+        if ("v3".equals(version)) {
+            return createUserTarget(ipAddress);
+        } else {
+            return createCommunityTarget(ipAddress, community);
+        }
+    }
+
+    /**
+     * Creates a CommunityTarget for SNMPv1 or SNMPv2c.
+     *
+     * @param ipAddress the target device IP address
+     * @param community the community string
+     * @return a configured CommunityTarget
+     */
+    private CommunityTarget createCommunityTarget(String ipAddress, String community) {
+        Address targetAddress = GenericAddress.parse("udp:" + ipAddress + "/" + PreferencesManager.getPortSNMP());
         CommunityTarget target = new CommunityTarget();
-        target.setCommunity(new OctetString(community));
+
+        String communityToUse = community.equals(DEFAULT_COMMUNITY)
+                ? PreferencesManager.getSnmpCommunity()
+                : community;
+
+        target.setCommunity(new OctetString(communityToUse));
         target.setAddress(targetAddress);
         target.setRetries(PreferencesManager.getSNMPRetries());
         target.setTimeout(PreferencesManager.getSnmpTimeout());
-        target.setVersion(SnmpConstants.version2c);
+
+        String version = PreferencesManager.getSnmpVersion();
+        if ("v1".equals(version)) {
+            target.setVersion(SnmpConstants.version1);
+        } else {
+            target.setVersion(SnmpConstants.version2c);
+        }
 
         return target;
     }
 
     /**
-     * Performs an SNMP GET operation with timeout handling.
+     * Creates a UserTarget for SNMPv3 with authentication.
      *
-     * @param target the SNMP target
-     * @param oid the OID to query
-     * @return the value as a string, or null if a query fails or times out
+     * @param ipAddress the target device IP address
+     * @return a configured UserTarget
      */
-    private String getSNMPValue(CommunityTarget target, String oid) {
+    private UserTarget createUserTarget(String ipAddress) {
+        Address targetAddress = GenericAddress.parse("udp:" + ipAddress + "/" + PreferencesManager.getPortSNMP());
+        UserTarget target = new UserTarget();
+
+        target.setAddress(targetAddress);
+        target.setRetries(PreferencesManager.getSNMPRetries());
+        target.setTimeout(PreferencesManager.getSnmpTimeout());
+        target.setVersion(SnmpConstants.version3);
+
+        // Set security level
+        target.setSecurityLevel(SecurityLevel.AUTH_PRIV);  // Auth + Privacy
+
+        // Set security name (username)
+        String username = PreferencesManager.getSnmpV3Username();
+        target.setSecurityName(new OctetString(username));
+
+        return target;
+    }
+
+    /**
+     * Performs an SNMP GET operation to retrieve a value for a specific OID.
+     * Supports both CommunityTarget (v1/v2c) and UserTarget (v3).
+     *
+     * @param target the SNMP target (CommunityTarget or UserTarget)
+     * @param oid the Object Identifier to query
+     * @return the value as a string, or null if the query fails
+     */
+    private String getSNMPValue(Target target, String oid) {
         try {
-            PDU pdu = new PDU();
+            PDU pdu;
+
+            // Create appropriate PDU based on an SNMP version
+            if (target.getVersion() == SnmpConstants.version3) {
+                pdu = new ScopedPDU();
+            } else {
+                pdu = new PDU();
+            }
+
             pdu.add(new VariableBinding(new OID(oid)));
             pdu.setType(PDU.GET);
 

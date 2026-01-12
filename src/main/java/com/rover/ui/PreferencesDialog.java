@@ -33,6 +33,15 @@ public class PreferencesDialog extends JDialog {
     private JTextField snmpCommunityField;
     private JSpinner snmpTimeoutSpinner;
     private JCheckBox autoEnrichSnmpCheckbox;
+    private JComboBox<String> snmpVersionComboBox;
+    private JTextField snmpV3UsernameField;
+    private JPasswordField snmpV3PasswordField;
+    private JLabel snmpV3UsernameLabel;
+    private JLabel snmpV3PasswordLabel;
+
+    // Protocol settings components
+    private JSpinner sshPortSpinner;
+    private JSpinner telnetPortSpinner;
 
     private boolean wasApplied = false;
 
@@ -50,7 +59,7 @@ public class PreferencesDialog extends JDialog {
     public PreferencesDialog(JFrame parent) {
         super(parent, "", true);
         setTitle(lang.get("preferences.title"));
-        setSize(500, 450);
+        setSize(550, 600);
         setLocationRelativeTo(parent);
         setResizable(false);
 
@@ -68,6 +77,7 @@ public class PreferencesDialog extends JDialog {
      *
      * @see #createDiscoveryBlock()
      * @see #createSnmpBlock()
+     * @see #createProtocolBlock()
      * @see #createButtonPanel()
      */
     private void initComponents() {
@@ -82,6 +92,8 @@ public class PreferencesDialog extends JDialog {
         mainPanel.add(createDiscoveryBlock());
         mainPanel.add(Box.createVerticalStrut(15));
         mainPanel.add(createSnmpBlock());
+        mainPanel.add(Box.createVerticalStrut(15));
+        mainPanel.add(createProtocolBlock());
 
         // Wrap in scroll pane for future expansion
         JScrollPane scrollPane = new JScrollPane(mainPanel);
@@ -129,7 +141,7 @@ public class PreferencesDialog extends JDialog {
         panel.add(discoveryTimeoutSpinner, gbc);
 
         gbc.gridx = 2; gbc.weightx = 1.0;
-        panel.add(new JLabel(lang.get("preferences.seconds")), gbc);
+        panel.add(new JLabel(lang.get("preferences.milliseconds")), gbc);
 
         // Send port setting
         gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0;
@@ -167,6 +179,7 @@ public class PreferencesDialog extends JDialog {
      * @see PreferencesManager#getSnmpCommunity()
      * @see PreferencesManager#getSnmpTimeout()
      * @see PreferencesManager#getAutoEnrichSnmp()
+     * @see PreferencesManager#getSnmpVersion()
      */
     private JPanel createSnmpBlock() {
         JPanel panel = new JPanel(new GridBagLayout());
@@ -187,16 +200,44 @@ public class PreferencesDialog extends JDialog {
         gbc.anchor = GridBagConstraints.WEST;
         gbc.fill = GridBagConstraints.HORIZONTAL;
 
-        // SNMP Community string
+        // SNMP Version
         gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0;
+        panel.add(new JLabel(lang.get("preferences.snmp_version")), gbc);
+
+        gbc.gridx = 1; gbc.gridwidth = 2; gbc.weightx = 1.0;
+        snmpVersionComboBox = new JComboBox<>(new String[]{"v1", "v2c", "v3"});
+        snmpVersionComboBox.setPreferredSize(new Dimension(80, 25));
+        snmpVersionComboBox.addActionListener(e -> toggleSNMPv3Fields());
+        panel.add(snmpVersionComboBox, gbc);
+
+        // SNMP Community string (for v1 and v2c)
+        gbc.gridx = 0; gbc.gridy = 1; gbc.gridwidth = 1; gbc.weightx = 0;
         panel.add(new JLabel(lang.get("preferences.snmp_community")), gbc);
 
         gbc.gridx = 1; gbc.gridwidth = 2; gbc.weightx = 1.0;
         snmpCommunityField = new JTextField(15);
         panel.add(snmpCommunityField, gbc);
 
+        // SNMPv3 Username (visible only for v3)
+        gbc.gridx = 0; gbc.gridy = 2; gbc.gridwidth = 1; gbc.weightx = 0;
+        snmpV3UsernameLabel = new JLabel(lang.get("preferences.snmpv3_username"));
+        panel.add(snmpV3UsernameLabel, gbc);
+
+        gbc.gridx = 1; gbc.gridwidth = 2; gbc.weightx = 1.0;
+        snmpV3UsernameField = new JTextField(15);
+        panel.add(snmpV3UsernameField, gbc);
+
+        // SNMPv3 Password (visible only for v3)
+        gbc.gridx = 0; gbc.gridy = 3; gbc.gridwidth = 1; gbc.weightx = 0;
+        snmpV3PasswordLabel = new JLabel(lang.get("preferences.snmpv3_password"));
+        panel.add(snmpV3PasswordLabel, gbc);
+
+        gbc.gridx = 1; gbc.gridwidth = 2; gbc.weightx = 1.0;
+        snmpV3PasswordField = new JPasswordField(15);
+        panel.add(snmpV3PasswordField, gbc);
+
         // SNMP Timeout
-        gbc.gridx = 0; gbc.gridy = 1; gbc.gridwidth = 1; gbc.weightx = 0;
+        gbc.gridx = 0; gbc.gridy = 4; gbc.gridwidth = 1; gbc.weightx = 0;
         panel.add(new JLabel(lang.get("preferences.snmp_timeout")), gbc);
 
         gbc.gridx = 1; gbc.weightx = 0;
@@ -208,12 +249,81 @@ public class PreferencesDialog extends JDialog {
         panel.add(new JLabel(lang.get("preferences.milliseconds")), gbc);
 
         // Auto-enrich checkbox
-        gbc.gridx = 0; gbc.gridy = 2; gbc.gridwidth = 3; gbc.weightx = 1.0;
+        gbc.gridx = 0; gbc.gridy = 5; gbc.gridwidth = 3; gbc.weightx = 1.0;
         gbc.insets = new Insets(10, 5, 5, 5);
         autoEnrichSnmpCheckbox = new JCheckBox(lang.get("preferences.auto_enrich_snmp"));
         panel.add(autoEnrichSnmpCheckbox, gbc);
 
         return panel;
+    }
+
+    /**
+     * Creates the Protocol Configuration block.
+     *
+     * @return a JPanel containing the protocol port settings
+     * @see PreferencesManager#getSshPort()
+     * @see PreferencesManager#getTelnetPort()
+     */
+    private JPanel createProtocolBlock() {
+        JPanel panel = new JPanel(new GridBagLayout());
+
+        // Title border
+        TitledBorder border = BorderFactory.createTitledBorder(
+                BorderFactory.createEtchedBorder(),
+                lang.get("preferences.block.protocols")
+        );
+        border.setTitleFont(new Font("Segoe UI", Font.PLAIN, 13));
+        panel.setBorder(BorderFactory.createCompoundBorder(
+                border,
+                BorderFactory.createEmptyBorder(10, 10, 10, 10)
+        ));
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(5, 5, 5, 5);
+        gbc.anchor = GridBagConstraints.WEST;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+
+        // SSH Port
+        gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0;
+        panel.add(new JLabel(lang.get("preferences.ssh_port")), gbc);
+
+        gbc.gridx = 1; gbc.weightx = 0;
+        sshPortSpinner = new JSpinner(new SpinnerNumberModel(PreferencesManager.getSshPort(), 1, 65535, 1));
+        sshPortSpinner.setPreferredSize(new Dimension(80, 25));
+        panel.add(sshPortSpinner, gbc);
+
+        gbc.gridx = 2; gbc.weightx = 1.0;
+        panel.add(new JLabel(""), gbc);
+
+        // Telnet Port
+        gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0;
+        panel.add(new JLabel(lang.get("preferences.telnet_port")), gbc);
+
+        gbc.gridx = 1; gbc.weightx = 0;
+        telnetPortSpinner = new JSpinner(new SpinnerNumberModel(PreferencesManager.getTelnetPort(), 1, 65535, 1));
+        telnetPortSpinner.setPreferredSize(new Dimension(80, 25));
+        panel.add(telnetPortSpinner, gbc);
+
+        gbc.gridx = 2; gbc.weightx = 1.0;
+        panel.add(new JLabel(""), gbc);
+
+        return panel;
+    }
+
+    /**
+     * Toggles visibility of SNMPv3 credential fields based on selected SNMP version.
+     */
+    private void toggleSNMPv3Fields() {
+        String selectedVersion = (String) snmpVersionComboBox.getSelectedItem();
+        boolean isV3 = "v3".equals(selectedVersion);
+
+        snmpV3UsernameLabel.setVisible(isV3);
+        snmpV3UsernameField.setVisible(isV3);
+        snmpV3PasswordLabel.setVisible(isV3);
+        snmpV3PasswordField.setVisible(isV3);
+
+        // Disable community field for v3
+        snmpCommunityField.setEnabled(!isV3);
     }
 
     /**
@@ -259,6 +369,20 @@ public class PreferencesDialog extends JDialog {
         discoverySendPortSpinner.setText(String.valueOf(PreferencesManager.getDiscoverySendPort()));
         discoveryListenPortSpinner.setText(String.valueOf(PreferencesManager.getDiscoveryListenPort()));
         autoEnrichSnmpCheckbox.setSelected(PreferencesManager.getAutoEnrichSnmp());
+
+        // SNMP version
+        snmpVersionComboBox.setSelectedItem(PreferencesManager.getSnmpVersion());
+
+        // SNMPv3 credentials
+        snmpV3UsernameField.setText(PreferencesManager.getSnmpV3Username());
+        snmpV3PasswordField.setText(PreferencesManager.getSnmpV3Password());
+
+        // Protocol ports
+        sshPortSpinner.setValue(PreferencesManager.getSshPort());
+        telnetPortSpinner.setValue(PreferencesManager.getTelnetPort());
+
+        // Toggle v3 fields visibility
+        toggleSNMPv3Fields();
     }
 
     /**
@@ -278,6 +402,17 @@ public class PreferencesDialog extends JDialog {
         PreferencesManager.saveDiscoverySendPort(Integer.parseInt(discoverySendPortSpinner.getText()));
         PreferencesManager.saveDiscoveryListenPort(Integer.parseInt(discoveryListenPortSpinner.getText()));
         PreferencesManager.saveAutoEnrichSnmp(autoEnrichSnmpCheckbox.isSelected());
+
+        // SNMP version
+        PreferencesManager.saveSnmpVersion((String) snmpVersionComboBox.getSelectedItem());
+
+        // SNMPv3 credentials
+        PreferencesManager.saveSnmpV3Username(snmpV3UsernameField.getText());
+        PreferencesManager.saveSnmpV3Password(new String(snmpV3PasswordField.getPassword()));
+
+        // Protocol ports
+        PreferencesManager.saveSshPort((Integer) sshPortSpinner.getValue());
+        PreferencesManager.saveTelnetPort((Integer) telnetPortSpinner.getValue());
     }
 
     /**

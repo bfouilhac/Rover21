@@ -123,9 +123,7 @@ public class PlanetSwitchDevice {
      *
      * @return the uptime in format "DD:HH:MM:SS" or "N/A" if not available
      */
-    public String getSystemUptime() {
-        return systemUptime;
-    }
+    public String getSystemUptime() {return systemUptime;}
 
     /**
      * Sets the MAC address of the switch.
