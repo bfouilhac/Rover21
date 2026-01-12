@@ -9,10 +9,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.*;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Service for discovering PLANET network switches using UDP broadcast protocol.
@@ -66,6 +63,7 @@ public class PlanetDiscoveryService {
 
         List<PlanetSwitchDevice> devices = new ArrayList<>();
         Set<String> discoveredMacs = new HashSet<>(); // To avoid duplicates
+        List<String> discoveredIps = new ArrayList<>(); // checking if duplicates for SNMP
         DatagramSocket sendSocket = null;
         DatagramSocket receiveSocket = null;
 
@@ -103,13 +101,14 @@ public class PlanetDiscoveryService {
                     if (device != null && !discoveredMacs.contains(device.getMacAddress())) {
                         devices.add(device);
                         discoveredMacs.add(device.getMacAddress());
-
                         logger.info("Discovered PLANET device: {} at {}", device.getDeviceName(), device.getIpAddress());
-                        if (callback != null) {
-                            callback.onDeviceDiscovered(device);
-                        }
-                        if (PreferencesManager.getAutoEnrichSnmp()) {
+                        Objects.requireNonNull(callback).onDeviceDiscovered(device);
+                        if (PreferencesManager.getAutoEnrichSnmp() && !discoveredIps.contains(device.getIpAddress())) {
+                            discoveredIps.add(device.getIpAddress());
                             enrichDeviceAsync(device, callback);
+                        } else if (discoveredIps.contains(device.getIpAddress())) {
+                            device.setSystemLocation(lang.get("error.snmp_duplicate"));
+                            device.setSystemUptime(lang.get("error.snmp_duplicate"));
                         }
                     }
                 } catch (SocketTimeoutException e) {
@@ -118,13 +117,11 @@ public class PlanetDiscoveryService {
                     throw new RuntimeException(e);
                 }
             }
-
             return devices;
 
         } catch (IOException e) {
             logger.error("Error during device discovery", e);
-        } finally {
-            // Clean up sockets
+        } finally { // Clean up sockets
             if (sendSocket != null && !sendSocket.isClosed()) {
                 sendSocket.close();
                 logger.debug("Send socket closed.");
@@ -134,7 +131,7 @@ public class PlanetDiscoveryService {
                 logger.debug("Receive socket closed.");
             }
         }
-        logger.info("Discovery COMPLETE. Found {} PLANET device(s)", devices.size());
+        logger.info("Discovery complete. Found {} PLANET device(s)", devices.size());
         return devices;
     }
 
@@ -228,6 +225,8 @@ public class PlanetDiscoveryService {
             }
 
             device.setOnline(true);
+            device.setSystemLocation(lang.get("info.loading_snmp"));
+            device.setSystemUptime(lang.get("info.loading_snmp"));
             return device;
 
         } catch (Exception e) {

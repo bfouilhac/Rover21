@@ -2,6 +2,8 @@ package com.rover.services;
 
 import com.rover.model.PlanetSwitchDevice;
 
+import java.util.List;
+
 /**
  * Callback interface for real-time device discovery notifications.
  * Implementations receive updates as devices are discovered.
@@ -26,8 +28,8 @@ public interface DiscoveryCallback {
     /**
      * Called when all the tests for differents protocols are completed.
      * This method is invoked from the device enrichment thread.
-     * @param device
-     * @param result
+     * @param device the device tested
+     * @param result the result of the protocols tests
      */
     void onProtocolsTestedCallback(PlanetSwitchDevice device, ProtocolTestService.ProtocolTestResult result);
 }

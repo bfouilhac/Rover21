@@ -536,6 +536,14 @@ public class MainWindow extends JFrame {
     }
 
     /**
+     * Update the status message in the header. Adds a message to the current one.
+     * @param message the message you want to add has to be a String.
+     */
+    public void addMessagetoStatus(String message) {
+        statusLabel.setText(statusLabel.getText() + " " + message);
+    }
+
+    /**
      * Enable/Disable scanning mode : disabling buttons etc ...
      */
     public void setScanningMode(boolean scanning) {
@@ -865,8 +873,8 @@ public class MainWindow extends JFrame {
                 device.getNetMask(),
                 device.getGateway(),
                 device.getDescription(),
-                device.getSystemLocation() != null ? device.getSystemLocation() : "Loading...",
-                device.getSystemUptime() != null ? device.getSystemUptime() : "Loading...",
+                device.getSystemLocation(),
+                device.getSystemUptime(),
                 Boolean.FALSE,
                 Boolean.FALSE,
                 Boolean.FALSE,

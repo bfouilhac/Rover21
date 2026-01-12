@@ -13,7 +13,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.swing.*;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -202,13 +204,28 @@ public class MainController implements MainWindow.UIEventListener {
             @Override
             protected void done() {
                 try {
-                    List<PlanetSwitchDevice> devices = get();
                     view.setScanningMode(false);
+                    List<PlanetSwitchDevice> devices = get();
 
                     if (devices.isEmpty()) {
                         view.setStatusMessage(lang.get("status.completed_none"));
                     } else {
+                        StringBuilder sb = new StringBuilder();
+                        List<PlanetSwitchDevice> duplicateDevices = devices.stream()
+                                .collect(Collectors.groupingBy(PlanetSwitchDevice::getIpAddress))
+                                .values().stream()
+                                .filter(group -> group.size() > 1)
+                                .flatMap(List::stream)
+                                .toList();
+
+                        for (PlanetSwitchDevice device : duplicateDevices) {
+                            sb.append(device.getMacAddress());
+                            if (duplicateDevices.indexOf(device) != duplicateDevices.size() - 1) {
+                                sb.append(", ");
+                            }
+                        }
                         view.setStatusMessage(lang.get("status.completed_found", devices.size()));
+                        view.addMessagetoStatus(lang.get("error.duplicate_message", sb));
                     }
 
                     logger.info("Discovery completed: {} device(s) found", devices.size());
