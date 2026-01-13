@@ -8,13 +8,11 @@ import java.util.Locale;
 import java.util.ResourceBundle;
 
 /**
- * Manager for handling internationalization (i18n) in the Rover21 application.
- * <p>
+ * Manager for handling internationalization in the Rover21 application.
  * This singleton class manages language switching and provides translated strings
  * from resource bundles. It supports multiple languages (currently English and French)
  * and automatically loads the user's preferred language from saved preferences or
  * system defaults.
- * </p>
  *
  * @author Benjamin FOUILHAC, ADM21 in January-February 2026
  * @see ResourceBundle
@@ -24,28 +22,25 @@ import java.util.ResourceBundle;
 public class LanguageManager {
 
     private static final Logger logger = LoggerFactory.getLogger(LanguageManager.class);
-
     private static LanguageManager instance;
-
     private ResourceBundle bundle;
-
     private Locale currentLocale;
 
     /**
      * Private constructor for a singleton pattern.
+     * Initializes the language manager by loading the saved language preference
+     * or falling back to the system default locale.
      *
      * @see PreferencesManager#getLanguage()
      * @see #setLanguage(String)
      */
     private LanguageManager() {
-        // Try to load saved language preference
-        String savedLanguage = PreferencesManager.getLanguage();
+        String savedLanguage = PreferencesManager.getLanguage(); // try to load saved language preference
 
         if (savedLanguage != null && !savedLanguage.isEmpty()) {
             setLanguage(savedLanguage);
         } else {
-            // Use system default or fallback to English
-            Locale systemLocale = Locale.getDefault();
+            Locale systemLocale = Locale.getDefault(); // use system default or fall back to English
 
             if (systemLocale.getLanguage().equals("fr")) {
                 setLocale(Locale.FRENCH);
@@ -59,10 +54,8 @@ public class LanguageManager {
 
     /**
      * Returns the singleton instance of LanguageManager.
-     * <p>
      * This method implements lazy initialization, creating the instance only
      * when first accessed. Subsequent calls return the same instance.
-     * </p>
      *
      * @return the unique LanguageManager instance
      */
@@ -75,11 +68,9 @@ public class LanguageManager {
 
     /**
      * Sets the current locale and reloads the resource bundle.
-     * <p>
      * This method changes the application's language by loading the appropriate
      * resource bundle for the specified locale. If the bundle cannot be loaded,
      * it falls back to English to prevent application failure.
-     * </p>
      *
      * @param locale the new locale to use (e.g., Locale.FRENCH, Locale.ENGLISH)
      * @see ResourceBundle#getBundle(String, Locale)
@@ -92,18 +83,15 @@ public class LanguageManager {
             logger.info("Locale changed to: {}", locale);
         } catch (Exception e) {
             logger.error("Failed to load resource bundle for locale: {}", locale, e);
-            // Fallback to English
-            this.bundle = ResourceBundle.getBundle("i18n.messages", Locale.ENGLISH);
+            this.bundle = ResourceBundle.getBundle("i18n.messages", Locale.ENGLISH); // fallback to English
         }
     }
 
     /**
      * Sets the language using an ISO 639-1 language code.
-     * <p>
      * This method accepts standard two-letter language codes and converts them
      * to appropriate Locale objects. The language preference is automatically
      * saved for persistence across application restarts.
-     * </p>
      *
      * @param languageCode the ISO 639-1 language code (e.g., "en", "fr")
      * @see #setLocale(Locale)
@@ -125,12 +113,10 @@ public class LanguageManager {
 
     /**
      * Retrieves a translated string for the given key.
-     * <p>
      * This method looks up the translation in the current resource bundle.
      * If the key is not found, it returns the key wrapped in exclamation marks
      * (e.g., "!missing.key!") to make missing translations easily identifiable
      * during development.
-     * </p>
      *
      * @param key the resource bundle key (e.g., "status.ready", "menu.file")
      * @return the translated string, or "!key!" if the translation is missing
@@ -147,10 +133,8 @@ public class LanguageManager {
 
     /**
      * Retrieves a translated string with formatted parameters.
-     * <p>
      * This method supports parameterized translations using MessageFormat syntax.
      * Parameters are referenced in the resource bundle using {0}, {1}, etc.
-     * </p>
      *
      * @param key the resource bundle key
      * @param args the arguments to format into the message (referenced as {0}, {1}, etc.)
@@ -164,16 +148,14 @@ public class LanguageManager {
             return MessageFormat.format(message, args);
         } catch (Exception e) {
             logger.error("Error formatting message for key: {} with args: {}", key, args, e);
-            return message; // Return unformatted message if formatting fails
+            return message; // return an unformatted message if formatting fails
         }
     }
 
     /**
      * Returns the current ISO 639-1 language code.
-     * <p>
      * This method provides the two-letter language code of the currently
      * active locale, which can be useful for conditional logic or UI updates.
-     * </p>
      *
      * @return the language code (e.g., "en", "fr")
      * @see Locale#getLanguage()

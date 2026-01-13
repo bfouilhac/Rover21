@@ -11,11 +11,9 @@ import java.util.List;
 
 /**
  * Service for managing and discovering network interfaces on the local system.
- * <p>
  * This service provides methods to scan the system for available network interfaces,
  * filter them based on specific criteria (IPv4, active, non-loopback), and validate
  * their status for network discovery operations.
- * </p>
  *
  * @author Benjamin FOUILHAC, ADM21 in January-February 2026
  * @see NetworkInterfaceCustom
@@ -27,11 +25,10 @@ public class NetworkAdapterService {
 
     /**
      * Retrieves all available network interfaces with valid IPv4 addresses.
-     * <p>
      * This method scans the system for all network interfaces, filters out
      * loopback and inactive interfaces, and returns only those with valid
-     * IPv4 addresses suitable for network discovery operations.
-     * </p>
+     * IPv4 addresses suitable for network discovery operations. APIPA addresses
+     * (169.254.x.x) and localhost (127.x.x.x) are excluded.
      *
      * @return a list of NetworkInterfaceCustom objects representing valid adapters
      * @see NetworkInterfaceCustom
@@ -46,34 +43,26 @@ public class NetworkAdapterService {
             while (networkInterfaces.hasMoreElements()) {
                 NetworkInterface netInterface = networkInterfaces.nextElement();
 
-                // Skip interfaces that are down or loopback
-                if (!netInterface.isUp() || netInterface.isLoopback()) {
+                if (!netInterface.isUp() || netInterface.isLoopback()) { // skip interfaces that are down or loopback
                     continue;
                 }
 
-                // Check all IP addresses assigned to this interface
-                Enumeration<InetAddress> inetAddresses = netInterface.getInetAddresses();
+                Enumeration<InetAddress> inetAddresses = netInterface.getInetAddresses(); // check all IP addresses assigned to this interface
                 while (inetAddresses.hasMoreElements()) {
                     InetAddress inetAddress = inetAddresses.nextElement();
 
-                    // Only process IPv4 addresses
-                    if (inetAddress instanceof Inet4Address) {
+                    if (inetAddress instanceof Inet4Address) { // only process IPv4 addresses
                         String ipAddress = inetAddress.getHostAddress();
 
-                        // Skip localhost and APIPA addresses
-                        if (ipAddress.startsWith("127.") || ipAddress.startsWith("169.254.")) {
+                        if (ipAddress.startsWith("127.") || ipAddress.startsWith("169.254.")) { // skip localhost and APIPA addresses
                             continue;
                         }
 
-                        NetworkInterfaceCustom adapter = createAdapter(
-                                netInterface,
-                                (Inet4Address) inetAddress
-                        );
+                        NetworkInterfaceCustom adapter = createAdapter(netInterface, (Inet4Address) inetAddress);
 
                         if (adapter != null) {
                             adapters.add(adapter);
-                            logger.info("Found network adapter: {} - {}",
-                                    adapter.getName(), adapter.getIpAddress());
+                            logger.info("Found network adapter: {} - {}", adapter.getName(), adapter.getIpAddress());
                         }
                     }
                 }
@@ -87,11 +76,9 @@ public class NetworkAdapterService {
 
     /**
      * Creates a NetworkInterfaceCustom object from a system NetworkInterface.
-     * <p>
      * This method extracts relevant information from the system's NetworkInterface
      * and constructs a custom representation suitable for the application's needs.
      * It handles exceptions gracefully and returns null if the adapter cannot be created.
-     * </p>
      *
      * @param netInterface the system NetworkInterface to convert
      * @param ipAddress the IPv4 address assigned to this interface
@@ -111,20 +98,17 @@ public class NetworkAdapterService {
 
             return adapter;
         } catch (Exception e) {
-            logger.error("Error creating adapter for interface: {}",
-                    netInterface.getName(), e);
+            logger.error("Error creating adapter for interface: {}", netInterface.getName(), e);
             return null;
         }
     }
 
     /**
      * Validates whether a network interface is currently active and usable.
-     * <p>
      * This method checks if the specified adapter still exists in the system,
      * is currently active (up), and is not a loopback interface. This is useful
      * to verify that an adapter selected by the user is still valid before
      * attempting a network discovery operation.
-     * </p>
      *
      * @param adapter the NetworkInterfaceCustom to validate
      * @return true if the adapter exists and is valid for use, false otherwise

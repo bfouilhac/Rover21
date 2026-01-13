@@ -8,16 +8,11 @@ import java.util.prefs.Preferences;
 
 /**
  * Manager for handling persistent user preferences across application sessions.
- * <p>
  * This utility class uses Java's Preferences API to store and retrieve application
  * settings in the operating system's user preference store. On Windows, preferences
  * are stored in the registry; on Unix/Linux systems, they are stored in XML files
- * in the user's home directory.
- * </p>
- * <p>
- * All methods are static, and preferences are persisted immediately when saved
- * using the {@code flush()} method to ensure data integrity.
- * </p>
+ * in the user's home directory. All methods are static, and preferences are persisted
+ * immediately when saved using the flush method to ensure data integrity.
  *
  * @author Benjamin FOUILHAC, ADM21 in January-February 2026
  * @see Preferences
@@ -26,10 +21,9 @@ import java.util.prefs.Preferences;
 public class PreferencesManager {
 
     private static final Logger logger = LoggerFactory.getLogger(PreferencesManager.class);
-
     private static final Preferences prefs = Preferences.userNodeForPackage(PreferencesManager.class);
 
-    // Language preference keys
+    // Language preference key
     private static final String LANGUAGE_KEY = "language";
 
     // Window state preference keys
@@ -42,18 +36,16 @@ public class PreferencesManager {
     private static final String AUTO_ENRICH_SNMP_KEY = "auto.enrich.snmp";
     private static final String PORT_SNMP_KEY = "port.snmp.key";
     private static final String SNMP_RETRIES = "snmp.retries";
+    private static final String SNMP_VERSION_KEY = "snmp.version";
+    private static final String SNMP_V3_USERNAME_KEY = "snmp.v3.username";
+    private static final String SNMP_V3_PASSWORD_KEY = "snmp.v3.password";
 
     // Network discovery preference keys
     private static final String DISCOVERY_SEND_PORT_KEY = "discovery.send.port";
     private static final String DISCOVERY_LISTEN_PORT_KEY = "discovery.listen.port";
     private static final String DISCOVERY_TIMEOUT_KEY = "discovery.timeout";
 
-    // SNMP v3 preference keys
-    private static final String SNMP_VERSION_KEY = "snmp.version";
-    private static final String SNMP_V3_USERNAME_KEY = "snmp.v3.username";
-    private static final String SNMP_V3_PASSWORD_KEY = "snmp.v3.password";
-
-    // Protocols keys
+    // Protocol port preference keys
     private static final String SSH_PORT_KEY = "protocol.ssh.port";
     private static final String TELNET_PORT_KEY = "protocol.telnet.port";
 
@@ -175,11 +167,9 @@ public class PreferencesManager {
 
     /**
      * Saves the user's preferred language.
-     * <p>
      * The language code is persisted immediately and will be loaded on the next
      * application startup. This method is typically called when the user
      * changes the language in the preferences' dialog.
-     * </p>
      *
      * @param languageCode the ISO 639-1 language code (e.g., "en", "fr")
      * @see LanguageManager#setLanguage(String)
@@ -205,10 +195,8 @@ public class PreferencesManager {
 
     /**
      * Saves the main window's size.
-     * <p>
      * This method is typically called when the window is closed or resized,
      * allowing the application to restore the window to the same size on the next startup.
-     * </p>
      *
      * @param width the window width in pixels
      * @param height the window height in pixels
@@ -246,10 +234,8 @@ public class PreferencesManager {
 
     /**
      * Retrieves the SNMP timeout value in milliseconds.
-     * <p>
      * This timeout determines how long to wait for SNMP responses before
      * considering the query failed.
-     * </p>
      *
      * @return the SNMP timeout in milliseconds (default: 1000 ms)
      */
@@ -259,10 +245,8 @@ public class PreferencesManager {
 
     /**
      * Retrieves the SNMP community string.
-     * <p>
      * The community string acts as a password for SNMP access. Most devices
      * use "public" for read-only access by default.
-     * </p>
      *
      * @return the SNMP community string (default: "public")
      */
@@ -272,10 +256,8 @@ public class PreferencesManager {
 
     /**
      * Retrieves whether automatic SNMP enrichment is enabled.
-     * <p>
      * When enabled, devices discovered via UDP are automatically queried
      * via SNMP to retrieve additional information (location, uptime).
-     * </p>
      *
      * @return true if auto-enrichment is enabled (default: true)
      */
@@ -285,10 +267,8 @@ public class PreferencesManager {
 
     /**
      * Retrieves the number of SNMP retry attempts.
-     * <p>
      * If an SNMP query fails, it will be retried this many times before
      * giving up.
-     * </p>
      *
      * @return the number of retries (default: 3)
      */
@@ -303,36 +283,6 @@ public class PreferencesManager {
      */
     public static int getPortSNMP() {
         return prefs.getInt(PORT_SNMP_KEY, 161);
-    }
-
-    /**
-     * Saves the number of SNMP retry attempts.
-     *
-     * @param retries the number of retries as a string
-     */
-    public static void saveSNMPRetries(String retries) {
-        try {
-            prefs.put(SNMP_RETRIES, retries);
-            prefs.flush();
-            logger.info("SNMP retries saved");
-        } catch (BackingStoreException e) {
-            logger.error("Failed to save SNMP retries", e);
-        }
-    }
-
-    /**
-     * Saves the SNMP UDP port.
-     *
-     * @param snmpPort the SNMP port as a string
-     */
-    public static void saveSNMPPort(String snmpPort) {
-        try {
-            prefs.put(PORT_SNMP_KEY, snmpPort);
-            prefs.flush();
-            logger.info("SNMP port saved");
-        } catch (BackingStoreException e) {
-            logger.error("Failed to save SNMP port", e);
-        }
     }
 
     /**
@@ -380,10 +330,8 @@ public class PreferencesManager {
 
     /**
      * Retrieves the network discovery timeout in milliseconds.
-     * <p>
      * This is the duration for which the application listens for UDP
      * responses from PLANET switches during network discovery.
-     * </p>
      *
      * @return the discovery timeout in milliseconds (default: 5000 ms)
      */
@@ -394,7 +342,7 @@ public class PreferencesManager {
     /**
      * Retrieves the UDP port used for sending discovery packets.
      *
-     * @return the send port (default: 62630)
+     * @return the sending port (default: 62630)
      */
     public static int getDiscoverySendPort() {
         return prefs.getInt(DISCOVERY_SEND_PORT_KEY, 62630);

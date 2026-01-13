@@ -13,6 +13,7 @@ import javax.swing.table.*;
 import java.awt.*;
 import java.util.*;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import static com.rover.utils.PreferencesManager.*;
 
@@ -64,6 +65,11 @@ public class MainWindow extends JFrame {
 
     // Listener for UI events
     private UIEventListener eventListener;
+
+    // Discovery state to preserve after language change
+    private int lastDiscoveredCount = 0;
+    private String lastDuplicateMACs = "";
+    private boolean discoveryCompleted = false;
 
     /**
      * Interface for callbacks to the MainController.
@@ -516,8 +522,8 @@ public class MainWindow extends JFrame {
                     device.getNetMask(),
                     device.getGateway(),
                     device.getDescription(),
-                    device.getSystemLocation() != null ? device.getSystemLocation() : lang.get("table.snmp_error"),
-                    device.getSystemUptime() != null ? device.getSystemUptime() : lang.get("table.snmp_error"),
+                    translateValue(device.getSystemLocation()),
+                    translateValue(device.getSystemUptime()),
                     false,
                     false,
                     false,
@@ -526,6 +532,31 @@ public class MainWindow extends JFrame {
         }
         updateDeviceCount();
         updateButtonStates();
+    }
+
+    /**
+     * Translates special values like "Timeout", "Error", "DUPLICATE" to current language.
+     *
+     * @param value the original value from a device
+     * @return the translated value
+     */
+    private String translateValue(String value) {
+        if (value == null || value.isEmpty()) {
+            return lang.get("table.na");
+        }
+
+        // Normalize the value (case-insensitive comparison)
+        String normalizedValue = value.trim().toUpperCase();
+
+        return switch (normalizedValue) {
+            case "TIMEOUT" -> lang.get("table.timeout");
+            case "ERROR" -> lang.get("table.error");
+            case "N/A", "N/D" -> lang.get("table.na");
+            case "SNMP NOT AVAILABLE" -> lang.get("table.snmp_not_available");
+            case "LOADING..." -> lang.get("table.loading");
+            case "DUPLICATE", "DUPLICATES", "DOUBLON", "DOUBLONS" -> lang.get("table.duplicate");
+            default -> value;  // Return original value if not a special keyword
+        };
     }
 
     /**
@@ -591,25 +622,23 @@ public class MainWindow extends JFrame {
      * Restores protocol checkbox status from cache after UI refresh.
      */
     private void restoreProtocolStatus() {
-        protocolStatusCache.forEach((macAddress, protocols) -> {
-            protocols.forEach((protocol, status) -> {
-                int row = findDeviceRowByMac(macAddress);
+        protocolStatusCache.forEach((macAddress, protocols) -> protocols.forEach((protocol, status) -> {
+            int row = findDeviceRowByMac(macAddress);
 
-                if (row >= 0) {
-                    int columnIndex = switch (protocol) {
-                        case "telnet" -> 9;
-                        case "ssh" -> 10;
-                        case "http" -> 11;
-                        case "https" -> 12;
-                        default -> -1;
-                    };
+            if (row >= 0) {
+                int columnIndex = switch (protocol) {
+                    case "telnet" -> 9;
+                    case "ssh" -> 10;
+                    case "http" -> 11;
+                    case "https" -> 12;
+                    default -> -1;
+                };
 
-                    if (columnIndex >= 0) {
-                        tableModel.setValueAt(status, row, columnIndex);
-                    }
+                if (columnIndex >= 0) {
+                    tableModel.setValueAt(status, row, columnIndex);
                 }
-            });
-        });
+            }
+        }));
 
         logger.debug("Restored protocol status for {} devices", protocolStatusCache.size());
     }
@@ -648,9 +677,21 @@ public class MainWindow extends JFrame {
     public void clearResults() {
         discoveredDevices.clear();
         tableModel.setRowCount(0);
+        protocolStatusCache.clear();
+        clearDiscoveryState();
         updateDeviceCount();
         updateButtonStates();
         statusLabel.setText(lang.get("status.ready"));
+    }
+
+    /**
+     * Clears the discovery state.
+     */
+    public void clearDiscoveryState() {
+        this.lastDiscoveredCount = 0;
+        this.lastDuplicateMACs = "";
+        this.discoveryCompleted = false;
+        logger.debug("Discovery state cleared");
     }
 
     /**
@@ -785,7 +826,9 @@ public class MainWindow extends JFrame {
         NetworkInterfaceCustom selectedAdapter = (NetworkInterfaceCustom) adapterComboBox.getSelectedItem();
         List<PlanetSwitchDevice> currentDevices = new ArrayList<>(discoveredDevices);
 
-        String currentStatus = statusLabel.getText();
+        int currentDiscoveredCount = lastDiscoveredCount;
+        String currentDuplicateMACs = lastDuplicateMACs;
+        boolean wasDiscoveryCompleted = discoveryCompleted;
 
         getContentPane().removeAll();
 
@@ -801,11 +844,21 @@ public class MainWindow extends JFrame {
             adapterComboBox.setSelectedItem(selectedAdapter);
         }
 
-        displayDevices(currentDevices);
+        displayDevices(currentDevices); // Shows the devices found
 
-        restoreProtocolStatus();
+        restoreProtocolStatus(); // Restore the checkboxs
 
-        statusLabel.setText(currentStatus);
+        if (wasDiscoveryCompleted) {
+            if (currentDiscoveredCount == 0) {
+                statusLabel.setText(lang.get("status.completed_none"));
+            } else {
+                String statusMsg = lang.get("status.completed_found", currentDiscoveredCount);
+                if (!currentDuplicateMACs.isEmpty()) {
+                    statusMsg += " " + lang.get("error.duplicate_message", currentDuplicateMACs);
+                }
+                statusLabel.setText(statusMsg);
+            }
+        }
 
         // Update title
         setTitle(lang.get("window.title"));
@@ -813,6 +866,35 @@ public class MainWindow extends JFrame {
         // Refresh display
         revalidate();
         repaint();
+    }
+
+    /**
+     * Formats a list of duplicate devices into a comma-separated MAC address string.
+     *
+     * @param duplicateDevices list of devices with duplicate IPs
+     * @return comma-separated MAC addresses (e.g., "A8:F7:E0:C5:10:5D, A8:F7:E0:DE:0F:96")
+     */
+    public String formatDuplicateMACs(List<PlanetSwitchDevice> duplicateDevices) {
+        if (duplicateDevices.isEmpty()) {
+            return "";
+        }
+
+        return duplicateDevices.stream()
+                .map(PlanetSwitchDevice::getMacAddress)
+                .collect(Collectors.joining(", "));
+    }
+
+    /**
+     * Sets the discovery completion state for status preservation during language changes.
+     *
+     * @param deviceCount number of devices discovered
+     * @param duplicateMACs comma-separated MAC addresses of duplicate devices
+     */
+    public void setDiscoveryState(int deviceCount, String duplicateMACs) {
+        this.lastDiscoveredCount = deviceCount;
+        this.lastDuplicateMACs = duplicateMACs;
+        this.discoveryCompleted = true;
+        logger.debug("Discovery state saved: {} devices, duplicates: {}", deviceCount, duplicateMACs);
     }
 
     /**
@@ -876,21 +958,15 @@ public class MainWindow extends JFrame {
     private void updateDeviceRow(int row, PlanetSwitchDevice device) {
         discoveredDevices.set(row, device);
 
-        tableModel.setValueAt(device.getMacAddress(), row, 0);
-        tableModel.setValueAt(device.getDeviceName(), row, 1);
+        tableModel.setValueAt(device.getDeviceName(), row, 0);
+        tableModel.setValueAt(device.getMacAddress(), row, 1);
         tableModel.setValueAt(device.getVersion(), row, 2);
         tableModel.setValueAt(device.getIpAddress(), row, 3);
         tableModel.setValueAt(device.getNetMask(), row, 4);
         tableModel.setValueAt(device.getGateway(), row, 5);
         tableModel.setValueAt(device.getDescription(), row, 6);
-
-        String location = device.getSystemLocation();
-        if (location == null) location = "N/A";
-        tableModel.setValueAt(location, row, 7);
-
-        String uptime = device.getSystemUptime();
-        if (uptime == null) uptime = "N/A";
-        tableModel.setValueAt(uptime, row, 8);
+        tableModel.setValueAt(translateValue(device.getSystemLocation()), row, 7);
+        tableModel.setValueAt(translateValue(device.getSystemUptime()), row, 8);
 
         logger.debug("Updated device row: {}", device.getDeviceName());
     }
