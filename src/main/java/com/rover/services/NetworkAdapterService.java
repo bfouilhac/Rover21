@@ -4,7 +4,10 @@ import com.rover.model.NetworkInterfaceCustom;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.net.*;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.net.SocketException;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.List;

@@ -11,8 +11,10 @@ import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.table.*;
 import java.awt.*;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import static com.rover.utils.PreferencesManager.*;
@@ -70,6 +72,9 @@ public class MainWindow extends JFrame {
     private int lastDiscoveredCount = 0;
     private String lastDuplicateMACs = "";
     private boolean discoveryCompleted = false;
+
+    // Security status cache (MAC -> Status)
+    private Map<String, Integer> securityStatusCache = new HashMap<>();
 
     /**
      * Interface for callbacks to the MainController.
@@ -339,8 +344,9 @@ public class MainWindow extends JFrame {
         statusBar.add(statusLabel, BorderLayout.WEST);
         statusBar.add(deviceCountLabel, BorderLayout.EAST);
 
-        // Devices table
+        // Devices table with protocol checkbox columns
         String[] columns = {
+                lang.get("table.security_lock"),
                 lang.get("table.device_name"),
                 lang.get("table.mac"),
                 lang.get("table.firmware"),
@@ -356,30 +362,39 @@ public class MainWindow extends JFrame {
                 "HTTPS"
         };
 
-
         tableModel = new DefaultTableModel(columns, 0) {
             @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
-
-            @Override
-            public Class<?> getColumnClass(int column) {
-                if (column >= 9 && column <= 12) {
+            public Class<?> getColumnClass(int columnIndex) {
+                if (columnIndex == 0) { // Column 0 is the lock icon (Integer)
+                    return Integer.class;
+                }
+                if (columnIndex >= 10 && columnIndex <= 13) { // Columns 10, 11, 12, 13 are checkboxes
                     return Boolean.class;
                 }
                 return String.class;
             }
+
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
         };
         devicesTable = new JTable(tableModel) {
+            @Override
             public Component prepareRenderer(TableCellRenderer renderer, int row, int column) {
                 Component c = super.prepareRenderer(renderer, row, column);
-                if (!c.getBackground().equals(getSelectionBackground())){
-                    c.setBackground((row % 2 == 0 ? ALTERNATE_TABLE_COLOR : Color.WHITE));
+
+                if (!c.getBackground().equals(getSelectionBackground())) {
+                    c.setBackground((row % 2 == 0 ? ALTERNATE_TABLE_COLOR : Color.WHITE)); // Alternate row colors (skip for lock icon column)
+                }
+
+                if (c instanceof JCheckBox checkbox) {
+                    checkbox.setEnabled(false); // Make checkboxes non-clickable
                 }
                 return c;
             }
         };
+
         devicesTable.setFont(TABLE_FONT);
         devicesTable.setRowHeight(30);
         devicesTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
@@ -401,7 +416,7 @@ public class MainWindow extends JFrame {
 
         // Apply centered renderer to all columns except checkbox columns
         for (int i = 0; i < devicesTable.getColumnCount(); i++) {
-            if (i < 9) {
+            if (i < 10) {
                 devicesTable.getColumnModel().getColumn(i).setCellRenderer(centerRenderer);
             }
         }
@@ -411,21 +426,25 @@ public class MainWindow extends JFrame {
         header.setBackground(new Color(245, 245, 245));
         header.setForeground(new Color(60, 60, 60));
 
-        // Preferred column widths
-        devicesTable.getColumnModel().getColumn(0).setPreferredWidth(140);
-        devicesTable.getColumnModel().getColumn(1).setPreferredWidth(180);
-        devicesTable.getColumnModel().getColumn(2).setPreferredWidth(120);
-        devicesTable.getColumnModel().getColumn(3).setPreferredWidth(120);
-        devicesTable.getColumnModel().getColumn(4).setPreferredWidth(120);
-        devicesTable.getColumnModel().getColumn(5).setPreferredWidth(120);
-        devicesTable.getColumnModel().getColumn(6).setPreferredWidth(200);
-        devicesTable.getColumnModel().getColumn(7).setPreferredWidth(200);
-        devicesTable.getColumnModel().getColumn(8).setPreferredWidth(200);
+        // Set column widths
+        devicesTable.getColumnModel().getColumn(0).setPreferredWidth(100); // Lock icon
+        devicesTable.getColumnModel().getColumn(1).setPreferredWidth(160); // Device Name
+        devicesTable.getColumnModel().getColumn(2).setPreferredWidth(140); // MAC
+        devicesTable.getColumnModel().getColumn(3).setPreferredWidth(120); // Firmware
+        devicesTable.getColumnModel().getColumn(4).setPreferredWidth(120); // IPv4
+        devicesTable.getColumnModel().getColumn(5).setPreferredWidth(120); // Netmask
+        devicesTable.getColumnModel().getColumn(6).setPreferredWidth(120); // Gateway
+        devicesTable.getColumnModel().getColumn(7).setPreferredWidth(200); // Description
+        devicesTable.getColumnModel().getColumn(8).setPreferredWidth(150); // Location
+        devicesTable.getColumnModel().getColumn(9).setPreferredWidth(180); // Uptime
+        devicesTable.getColumnModel().getColumn(10).setPreferredWidth(70); // Telnet
+        devicesTable.getColumnModel().getColumn(11).setPreferredWidth(70); // SSH
+        devicesTable.getColumnModel().getColumn(12).setPreferredWidth(70); // HTTP
+        devicesTable.getColumnModel().getColumn(13).setPreferredWidth(70); // HTTPS
 
-        devicesTable.getColumnModel().getColumn(9).setPreferredWidth(70);
-        devicesTable.getColumnModel().getColumn(10).setPreferredWidth(70);
-        devicesTable.getColumnModel().getColumn(11).setPreferredWidth(70);
-        devicesTable.getColumnModel().getColumn(12).setPreferredWidth(70);
+        // Set renderer for the lock icon column
+        devicesTable.getColumnModel().getColumn(0).setCellRenderer(new LockIconRenderer());
+
 
         // Enable/disable buttons based on selection
         devicesTable.getSelectionModel().addListSelectionListener(e -> {
@@ -515,6 +534,7 @@ public class MainWindow extends JFrame {
             deviceCheckboxes.put(device.getMacAddress(), checkboxMap);
 
             tableModel.addRow(new Object[]{
+                    LockIconRenderer.LOCK_UNKNOWN, // Lock status (gray by default)
                     device.getDeviceName(),
                     device.getMacAddress(),
                     device.getVersion(),
@@ -601,10 +621,10 @@ public class MainWindow extends JFrame {
 
         if (row >= 0) {
             int columnIndex = switch (protocol.toLowerCase()) {
-                case "telnet" -> 9;
-                case "ssh" -> 10;
-                case "http" -> 11;
-                case "https" -> 12;
+                case "telnet" -> 10;
+                case "ssh" -> 11;
+                case "http" -> 12;
+                case "https" -> 13;
                 default -> -1;
             };
 
@@ -619,7 +639,7 @@ public class MainWindow extends JFrame {
     }
 
     /**
-     * Restores protocol checkbox status from cache after UI refresh.
+     * Restores protocol checkbox status from the cache after UI refresh.
      */
     private void restoreProtocolStatus() {
         protocolStatusCache.forEach((macAddress, protocols) -> protocols.forEach((protocol, status) -> {
@@ -627,10 +647,10 @@ public class MainWindow extends JFrame {
 
             if (row >= 0) {
                 int columnIndex = switch (protocol) {
-                    case "telnet" -> 9;
-                    case "ssh" -> 10;
-                    case "http" -> 11;
-                    case "https" -> 12;
+                    case "telnet" -> 10;
+                    case "ssh" -> 11;
+                    case "http" -> 12;
+                    case "https" -> 13;
                     default -> -1;
                 };
 
@@ -639,6 +659,14 @@ public class MainWindow extends JFrame {
                 }
             }
         }));
+
+        // Restore security status
+        securityStatusCache.forEach((macAddress, status) -> {
+            int row = findDeviceRowByMac(macAddress);
+            if (row >= 0) {
+                tableModel.setValueAt(status, row, 0);
+            }
+        });
 
         logger.debug("Restored protocol status for {} devices", protocolStatusCache.size());
     }
@@ -678,6 +706,7 @@ public class MainWindow extends JFrame {
         discoveredDevices.clear();
         tableModel.setRowCount(0);
         protocolStatusCache.clear();
+        securityStatusCache.clear();
         clearDiscoveryState();
         updateDeviceCount();
         updateButtonStates();
@@ -958,17 +987,34 @@ public class MainWindow extends JFrame {
     private void updateDeviceRow(int row, PlanetSwitchDevice device) {
         discoveredDevices.set(row, device);
 
-        tableModel.setValueAt(device.getDeviceName(), row, 0);
-        tableModel.setValueAt(device.getMacAddress(), row, 1);
-        tableModel.setValueAt(device.getVersion(), row, 2);
-        tableModel.setValueAt(device.getIpAddress(), row, 3);
-        tableModel.setValueAt(device.getNetMask(), row, 4);
-        tableModel.setValueAt(device.getGateway(), row, 5);
-        tableModel.setValueAt(device.getDescription(), row, 6);
-        tableModel.setValueAt(translateValue(device.getSystemLocation()), row, 7);
-        tableModel.setValueAt(translateValue(device.getSystemUptime()), row, 8);
+        // Column 0 (lock) is not updated here, only via setSecurityStatus()
+        tableModel.setValueAt(device.getDeviceName(), row, 1);
+        tableModel.setValueAt(device.getMacAddress(), row, 2);
+        tableModel.setValueAt(device.getVersion(), row, 3);
+        tableModel.setValueAt(device.getIpAddress(), row, 4);
+        tableModel.setValueAt(device.getNetMask(), row, 5);
+        tableModel.setValueAt(device.getGateway(), row, 6);
+        tableModel.setValueAt(device.getDescription(), row, 7);
+        tableModel.setValueAt(translateValue(device.getSystemLocation()), row, 8);
+        tableModel.setValueAt(translateValue(device.getSystemUptime()), row, 9);
 
         logger.debug("Updated device row: {}", device.getDeviceName());
+    }
+
+    /**
+     * Updates the security lock icon for a specific device.
+     *
+     * @param macAddress the device MAC address
+     * @param status the security status (LOCK_UNKNOWN, LOCK_SECURE, LOCK_INSECURE)
+     */
+    public void setSecurityStatus(String macAddress, int status) {
+        int row = findDeviceRowByMac(macAddress);
+
+        if (row >= 0) {
+            tableModel.setValueAt(status, row, 0);
+            securityStatusCache.put(macAddress, status);
+            logger.debug("Set security status to {} for device {}", status, macAddress);
+        }
     }
 
     /**
@@ -980,6 +1026,7 @@ public class MainWindow extends JFrame {
         discoveredDevices.add(device);
 
         tableModel.addRow(new Object[]{
+                0,
                 device.getDeviceName(),
                 device.getMacAddress(),
                 device.getVersion(),

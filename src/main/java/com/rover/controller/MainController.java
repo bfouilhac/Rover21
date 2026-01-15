@@ -6,6 +6,7 @@ import com.rover.services.DiscoveryCallback;
 import com.rover.services.NetworkAdapterService;
 import com.rover.services.PlanetDiscoveryService;
 import com.rover.services.ProtocolTestService;
+import com.rover.ui.LockIconRenderer;
 import com.rover.ui.MainWindow;
 import com.rover.utils.LanguageManager;
 import com.rover.utils.PreferencesManager;
@@ -167,10 +168,15 @@ public class MainController implements MainWindow.UIEventListener {
 
                     @Override
                     public void onProtocolsTestedCallback(PlanetSwitchDevice device, ProtocolTestService.ProtocolTestResult result) {
-                        view.setProtocolStatus(device.getMacAddress(), "telnet", result.isTelnetAvailable()); // update protocol checkboxes in UI
-                        view.setProtocolStatus(device.getMacAddress(), "ssh", result.isSshAvailable());
-                        view.setProtocolStatus(device.getMacAddress(), "http", result.isHttpAvailable());
-                        view.setProtocolStatus(device.getMacAddress(), "https", result.isHttpsAvailable());
+                        String mac = device.getMacAddress();
+
+                        view.setProtocolStatus(mac, "telnet", result.isTelnetAvailable());
+                        view.setProtocolStatus(mac, "ssh", result.isSshAvailable());
+                        view.setProtocolStatus(mac, "http", result.isHttpAvailable());
+                        view.setProtocolStatus(mac, "https", result.isHttpsAvailable());
+
+                        Integer lockStatus = result.getSecurityLockStatus();
+                        view.setSecurityStatus(mac, lockStatus);
                     }
                 };
 

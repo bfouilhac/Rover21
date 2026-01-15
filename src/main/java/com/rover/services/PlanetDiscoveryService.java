@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.net.*;
 import java.util.*;
+import java.util.concurrent.*;
 
 /**
  * Service for discovering PLANET network switches using UDP broadcast protocol.
@@ -29,11 +30,36 @@ public class PlanetDiscoveryService {
 
     // magic discovery packet for PLANET switches
     private static final byte[] DISCOVERY_PACKET = {
-            0x50, 0x4c, 0x41, 0x4e, 0x45, 0x54, 0x75, 0x74,  // "PLANETut"
-            0x00, 0x16,                                       // length/type
-            (byte) 0xff, (byte) 0xff, (byte) 0xff,           // broadcast MAC
-            (byte) 0xff, (byte) 0xff, (byte) 0xff            // broadcast MAC
+            0x50, 0x4c, 0x41, 0x4e, 0x45, 0x54, 0x75, 0x74,
+            0x00, 0x16,
+            (byte) 0xff, (byte) 0xff, (byte) 0xff,
+            (byte) 0xff, (byte) 0xff, (byte) 0xff
     };
+
+    private ExecutorService createAdaptiveExecutor(String name) {
+        int minThreads = Runtime.getRuntime().availableProcessors();
+        int maxThreads = minThreads * 3;
+
+        logger.info("Creating {} executor: min={}, max={}", name, minThreads, maxThreads);
+
+        return new ThreadPoolExecutor(
+                minThreads,
+                maxThreads,
+                60L,
+                TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(),
+                new ThreadFactory() {
+                    private int counter = 0;
+                    @Override
+                    public Thread newThread(Runnable r) {
+                        Thread t = new Thread(r);
+                        t.setName(name + "-" + (++counter));
+                        t.setDaemon(true);
+                        return t;
+                    }
+                }
+        );
+    }
 
     /**
      * Discovers PLANET switches on the network using UDP broadcast.
@@ -58,23 +84,26 @@ public class PlanetDiscoveryService {
         logger.info("Starting PLANET device discovery on interface: {}", localAddress);
 
         List<PlanetSwitchDevice> devices = new ArrayList<>();
-        Set<String> discoveredMacs = new HashSet<>(); // to avoid duplicates
-        Set<String> discoveredIps = new HashSet<>(); // to track IPs for SNMP (avoid duplicates)
+        Set<String> discoveredMacs = new HashSet<>();
+        Set<String> discoveredIps = new HashSet<>();
+
+        ExecutorService protocolExecutor = createAdaptiveExecutor("Protocol");
+        ExecutorService snmpExecutor = createAdaptiveExecutor("SNMP");
 
         DatagramSocket sendSocket = null;
         DatagramSocket receiveSocket = null;
 
         try {
-            receiveSocket = createReceiveSocket(responsePort, socketTimeout); // set up receive socket
+            receiveSocket = createReceiveSocket(responsePort, socketTimeout);
             if (receiveSocket == null) {
-                return devices; // return an empty list if socket binding fails
+                return devices;
             }
 
-            sendSocket = createSendSocket(localAddress, discoveryPort); // set up send socket bound to a specific interface
-            sendDiscoveryPacket(sendSocket, discoveryPort); // send the discovery packet
+            sendSocket = createSendSocket(localAddress, discoveryPort);
+            sendDiscoveryPacket(sendSocket, discoveryPort);
 
-            long startTime = System.currentTimeMillis(); // listen for responses
-            logger.info("Listening for responses on port {} for {} ms...", responsePort, socketTimeout);
+            long startTime = System.currentTimeMillis();
+            logger.info("Listening for responses on port {} for {} ms", responsePort, socketTimeout);
 
             while (System.currentTimeMillis() - startTime < socketTimeout) {
                 try {
@@ -91,31 +120,98 @@ public class PlanetDiscoveryService {
 
                         Objects.requireNonNull(callback, "Callback cannot be null").onDeviceDiscovered(device);
 
-                        if (PreferencesManager.getAutoEnrichSnmp()) { // check if auto-enrich is enabled
+                        if (PreferencesManager.getAutoEnrichSnmp()) {
                             if (!discoveredIps.contains(device.getIpAddress())) {
                                 discoveredIps.add(device.getIpAddress());
-                                enrichDeviceAsync(device, callback); // enrich in a separate thread
+                                enrichDeviceAsync(device, callback, snmpExecutor, protocolExecutor);
                             } else {
-                                device.setSystemLocation(lang.get("error.snmp_duplicate")); // duplicate IP detected
+                                device.setSystemLocation(lang.get("error.snmp_duplicate"));
                                 device.setSystemUptime(lang.get("error.snmp_duplicate"));
                             }
                         }
                     }
                 } catch (SocketTimeoutException e) {
-                    break; // timeout reached, stop listening
+                    break;
                 }
             }
 
             logger.info("Discovery complete. Found {} PLANET device(s)", devices.size());
-            return devices;
 
         } catch (IOException e) {
             logger.error("Error during device discovery", e);
-            return devices;
         } finally {
             closeSocket(sendSocket, "Send socket");
             closeSocket(receiveSocket, "Receive socket");
         }
+
+        return devices;
+    }
+
+    private void enrichDeviceAsync(PlanetSwitchDevice device, DiscoveryCallback callback, ExecutorService snmpExecutor, ExecutorService protocolExecutor) {
+
+        protocolExecutor.submit(() -> {
+            long startTime = System.currentTimeMillis();
+            ProtocolTestService protocolService = new ProtocolTestService();
+
+            try {
+                logger.info("Protocol tests starting for {}", device.getIpAddress());
+
+                ProtocolTestService.ProtocolTestResult protocolResult =
+                        protocolService.testAllProtocols(device.getIpAddress(), device.getMacAddress());
+
+                long elapsed = System.currentTimeMillis() - startTime;
+                logger.info("Protocol tests for {} completed in {}ms", device.getIpAddress(), elapsed);
+
+                if (callback != null) {
+                    callback.onProtocolsTestedCallback(device, protocolResult);
+                }
+
+            } catch (Exception e) {
+                logger.error("Failed to test protocols for {}: {}", device.getIpAddress(), e.getMessage());
+            }
+        });
+
+        snmpExecutor.submit(() -> {
+            long startTime = System.currentTimeMillis();
+            SNMPService snmpService = null;
+            boolean enriched = false;
+
+            try {
+                snmpService = new SNMPService();
+                if (snmpService.testSNMPConnectivity(device.getIpAddress())) {
+                    snmpService.enrichDeviceWithSNMP(device);
+                    enriched = true;
+
+                    long elapsed = System.currentTimeMillis() - startTime;
+                    logger.info("SNMP enrichment for {} completed in {}ms", device.getIpAddress(), elapsed);
+                } else {
+                    logger.warn("SNMP not accessible for {}", device.getIpAddress());
+                    device.setSystemLocation("SNMP not available");
+                    device.setSystemUptime("N/A");
+                }
+            } catch (Exception e) {
+                logger.error("Failed to enrich {} with SNMP: {}", device.getIpAddress(), e.getMessage());
+                device.setSystemLocation("Error");
+                device.setSystemUptime("Error");
+            } finally {
+                if (snmpService != null) {
+                    snmpService.close();
+                }
+
+                if (!enriched) {
+                    if (device.getSystemLocation() == null || device.getSystemLocation().equals("Loading...")) {
+                        device.setSystemLocation("Timeout");
+                    }
+                    if (device.getSystemUptime() == null || device.getSystemUptime().equals("Loading...")) {
+                        device.setSystemUptime("Timeout");
+                    }
+                }
+
+                if (callback != null) {
+                    callback.onDeviceEnriched(device);
+                }
+            }
+        });
     }
 
     /**
@@ -179,7 +275,7 @@ public class PlanetDiscoveryService {
                 discoveryPort
         );
         socket.send(packet);
-        logger.debug("Discovery packet sent to broadcast address on port: {}", discoveryPort);
+        logger.debug("Discovery packet sent to broadcast");
     }
 
     /**
@@ -237,8 +333,9 @@ public class PlanetDiscoveryService {
             device.setSystemUptime(lang.get("info.loading_snmp"));
 
             return device;
+
         } catch (Exception e) {
-            logger.error("Error parsing device response", e);
+            logger.warn("Error parsing device response", e);
             return null;
         }
     }
@@ -364,71 +461,6 @@ public class PlanetDiscoveryService {
         }
 
         return strings;
-    }
-
-    /**
-     * Enriches a device with SNMP data and tests protocols in a separate daemon thread.
-     * This method creates a dedicated thread for each device to perform SNMP queries
-     * and protocol tests without blocking the main discovery process. The thread has
-     * a maximum execution time of 1 second before being forcibly terminated.
-     *
-     * @param device the device to enrich
-     * @param callback the callback to notify when enrichment completes
-     */
-    private void enrichDeviceAsync(PlanetSwitchDevice device, DiscoveryCallback callback) {
-        Thread enrichmentThread = new Thread(() -> {
-            SNMPService snmpService = null;
-            ProtocolTestService protocolService = new ProtocolTestService();
-            boolean enriched = false;
-
-            try {
-                snmpService = new SNMPService();
-                if (snmpService.testSNMPConnectivity(device.getIpAddress())) {
-                    snmpService.enrichDeviceWithSNMP(device);
-                    enriched = true;
-                    logger.info("Device {} enriched with SNMP data", device.getIpAddress());
-                } else {
-                    logger.warn("SNMP not accessible for {}", device.getIpAddress());
-                    device.setSystemLocation(lang.get("error.snmp_available"));
-                    device.setSystemUptime(lang.get("error.snmp_available"));
-                }
-
-                logger.info("Testing protocols for device: {}", device.getIpAddress());
-                ProtocolTestService.ProtocolTestResult protocolResult = protocolService.testAllProtocols(device.getIpAddress());
-                callback.onProtocolsTestedCallback(device, protocolResult);
-
-            } catch (Exception e) {
-                logger.error("Failed to enrich {} with SNMP: {}", device.getIpAddress(), e.getMessage());
-                device.setSystemLocation("Error");
-                device.setSystemUptime("Error");
-            } finally {
-                if (snmpService != null) {
-                    snmpService.close();
-                }
-
-                if (!enriched) { // set timeout values if enrichment failed
-                    if (device.getSystemLocation() == null || device.getSystemLocation().equals("Loading...")) {
-                        device.setSystemLocation("Timeout");
-                    }
-                    if (device.getSystemUptime() == null || device.getSystemUptime().equals("Loading...")) {
-                        device.setSystemUptime("Timeout");
-                    }
-                }
-
-                callback.onDeviceEnriched(device);
-            }
-        });
-
-        enrichmentThread.setName("Enrichment-" + device.getIpAddress());
-        enrichmentThread.setDaemon(true); // daemon thread will not prevent JVM shutdown
-        enrichmentThread.start();
-
-        try {
-            enrichmentThread.join(1000); // wait up to 1 second for a thread to complete
-        } catch (InterruptedException e) {
-            logger.warn("Enrichment thread interrupted for {}", device.getIpAddress());
-            Thread.currentThread().interrupt();
-        }
     }
 
     /**
