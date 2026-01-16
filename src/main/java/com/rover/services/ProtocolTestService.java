@@ -340,14 +340,15 @@ public class ProtocolTestService {
 
     public boolean isHTTPSAvailable(String ipAddress) {
         try {
-            disableSSLVerification();
-
             URL url = new URL("https://" + ipAddress);
             HttpsURLConnection connection = (HttpsURLConnection) url.openConnection();
             connection.setConnectTimeout(HTTP_TIMEOUT);
             connection.setReadTimeout(HTTP_TIMEOUT);
             connection.setRequestMethod("HEAD");
             connection.setInstanceFollowRedirects(false);
+
+            // Configuration locale (pas globale)
+            connection.setSSLSocketFactory(createTrustAllSSLContext().getSocketFactory());
             connection.setHostnameVerifier((hostname, session) -> true);
 
             int responseCode = connection.getResponseCode();
@@ -360,32 +361,28 @@ public class ProtocolTestService {
         }
     }
 
+    private SSLContext createTrustAllSSLContext() throws Exception {
+        TrustManager[] trustAllCerts = new TrustManager[]{
+                new X509TrustManager() {
+                    public java.security.cert.X509Certificate[] getAcceptedIssuers() {
+                        return null;
+                    }
+                    public void checkClientTrusted(java.security.cert.X509Certificate[] certs, String authType) {}
+                    public void checkServerTrusted(java.security.cert.X509Certificate[] certs, String authType) {}
+                }
+        };
+
+        SSLContext sc = SSLContext.getInstance("TLS");
+        sc.init(null, trustAllCerts, new java.security.SecureRandom());
+        return sc;
+    }
+
     private boolean isPortOpen(String ipAddress, int port) {
         try (Socket socket = new Socket()) {
             socket.connect(new InetSocketAddress(ipAddress, port), PORT_CHECK_TIMEOUT);
             return true;
         } catch (IOException e) {
             return false;
-        }
-    }
-
-    private void disableSSLVerification() {
-        try {
-            TrustManager[] trustAllCerts = new TrustManager[]{
-                    new X509TrustManager() {
-                        public java.security.cert.X509Certificate[] getAcceptedIssuers() {
-                            return null;
-                        }
-                        public void checkClientTrusted(java.security.cert.X509Certificate[] certs, String authType) {}
-                        public void checkServerTrusted(java.security.cert.X509Certificate[] certs, String authType) {}
-                    }
-            };
-
-            SSLContext sc = SSLContext.getInstance("SSL");
-            sc.init(null, trustAllCerts, new java.security.SecureRandom());
-            HttpsURLConnection.setDefaultSSLSocketFactory(sc.getSocketFactory());
-        } catch (KeyManagementException | NoSuchAlgorithmException e) {
-            logger.error("Error disabling SSL verification", e);
         }
     }
 
