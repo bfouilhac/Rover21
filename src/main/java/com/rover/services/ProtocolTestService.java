@@ -473,7 +473,7 @@ public class ProtocolTestService {
     }
 
     /**
-     * Handles the SSH authentication flow after channel is connected.
+     * Handles the SSH authentication flow after the channel is connected.
      */
     private boolean handleSshAuthentication(ChannelShell channel, String ipAddress, String username, String password) throws Exception {
         InputStream in = channel.getInputStream();
@@ -640,7 +640,7 @@ public class ProtocolTestService {
     }
 
     /**
-     * Checks if text contains a username prompt.
+     * Checks if the text contains a username prompt.
      */
     private boolean isUsernamePrompt(String text) {
         return text.contains("login:") ||
@@ -649,7 +649,7 @@ public class ProtocolTestService {
     }
 
     /**
-     * Checks if text indicates authentication failure.
+     * Checks if the text indicates authentication failure.
      */
     private boolean isAuthenticationFailed(String text) {
         return text.contains("incorrect") ||
@@ -660,7 +660,7 @@ public class ProtocolTestService {
     }
 
     /**
-     * Checks if text contains a shell prompt.
+     * Checks if the text contains a shell prompt.
      */
     private boolean isShellPrompt(String text) {
         return text.contains("#") || text.contains(">") || text.contains("$");
@@ -697,7 +697,7 @@ public class ProtocolTestService {
     }
 
     /**
-     * Sends a credential followed by newline.
+     * Sends a credential followed by a newline.
      */
     private void sendCredential(OutputStream out, String credential) throws IOException {
         out.write((credential + "\n").getBytes());
