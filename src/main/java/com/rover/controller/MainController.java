@@ -6,7 +6,7 @@ import com.rover.services.DiscoveryCallback;
 import com.rover.services.NetworkAdapterService;
 import com.rover.services.PlanetDiscoveryService;
 import com.rover.services.ProtocolTestService;
-import com.rover.ui.LockIconRenderer;
+import com.rover.ui.APP_STATE;
 import com.rover.ui.MainWindow;
 import com.rover.utils.LanguageManager;
 import com.rover.utils.PreferencesManager;
@@ -53,7 +53,6 @@ public class MainController implements MainWindow.UIEventListener {
         this.discoveryService = new PlanetDiscoveryService();
 
         view.setEventListener(this);
-
         logger.info("MainController initialized");
     }
 
@@ -92,6 +91,7 @@ public class MainController implements MainWindow.UIEventListener {
             } else {
                 view.loadNetworkInterfaceCustoms(adapters);
                 view.setStatusMessage(lang.get("status.ready_adapters", adapters.size()));
+                view.setAppState(APP_STATE.ADAPTERS_FOUND);
                 logger.info("Loaded {} network adapter(s)", adapters.size());
             }
 
@@ -148,6 +148,7 @@ public class MainController implements MainWindow.UIEventListener {
         }
 
         view.setScanningMode(true);
+        view.setAppState(APP_STATE.SEARCHING);
 
         SwingWorker<List<PlanetSwitchDevice>, PlanetSwitchDevice> worker = new SwingWorker<>() {
 
@@ -200,6 +201,7 @@ public class MainController implements MainWindow.UIEventListener {
             protected void done() {
                 try {
                     view.setScanningMode(false);
+                    view.setAppState(APP_STATE.DISCOVERY_END);
                     List<PlanetSwitchDevice> devices = get();
 
                     List<PlanetSwitchDevice> duplicates = findDevicesWithDuplicateIPs(devices);
@@ -220,6 +222,7 @@ public class MainController implements MainWindow.UIEventListener {
                     }
 
                     logger.info("Discovery completed: {} device(s) found", devices.size());
+                    view.setAppState(APP_STATE.FINAL_STATE);
 
                 } catch (Exception e) {
                     logger.error("Error during discovery", e);

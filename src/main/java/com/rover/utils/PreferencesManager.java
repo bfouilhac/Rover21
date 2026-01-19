@@ -3,6 +3,8 @@ package com.rover.utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.prefs.BackingStoreException;
 import java.util.prefs.Preferences;
 
@@ -48,6 +50,11 @@ public class PreferencesManager {
     // Protocol port preference keys
     private static final String SSH_PORT_KEY = "protocol.ssh.port";
     private static final String TELNET_PORT_KEY = "protocol.telnet.port";
+
+    // Session-only list: no need to save it between runs.
+    private static final List<String>  customAccountMap = new ArrayList<>();
+
+    public static List<String> getCustomAccountMap(){return customAccountMap;} // encoded : username:pwd
 
     /**
      * Retrieves the SNMP version.

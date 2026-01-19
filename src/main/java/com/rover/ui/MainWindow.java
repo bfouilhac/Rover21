@@ -76,6 +76,8 @@ public class MainWindow extends JFrame {
     // Security status cache (MAC -> Status)
     private Map<String, Integer> securityStatusCache = new HashMap<>();
 
+    private APP_STATE appState;
+
     /**
      * Interface for callbacks to the MainController.
      * @see com.rover.controller.MainController
@@ -89,6 +91,10 @@ public class MainWindow extends JFrame {
         void onExportClicked(List<PlanetSwitchDevice> devices);
         void onClearResultsClicked();
         void onRefreshAdaptersClicked();
+    }
+
+    public void setAppState(APP_STATE appState) {
+        this.appState = appState;
     }
 
     /**
@@ -111,6 +117,7 @@ public class MainWindow extends JFrame {
         setupWindowListener(); // Setting up the listener so we can know when the window is closed
 
         restoreWindowState();
+        appState = APP_STATE.INIT;
 
         logger.info("MainWindow initialized with language: {}", lang.getCurrentLanguageCode());
     }
@@ -588,14 +595,6 @@ public class MainWindow extends JFrame {
     }
 
     /**
-     * Update the status message in the header. Adds a message to the current one.
-     * @param message the message you want to add has to be a String.
-     */
-    public void addMessagetoStatus(String message) {
-        statusLabel.setText(statusLabel.getText() + " " + message);
-    }
-
-    /**
      * Enable/Disable scanning mode : disabling buttons etc ...
      */
     public void setScanningMode(boolean scanning) {
@@ -852,12 +851,12 @@ public class MainWindow extends JFrame {
     }
 
     private void refreshUI() {
+
         NetworkInterfaceCustom selectedAdapter = (NetworkInterfaceCustom) adapterComboBox.getSelectedItem();
         List<PlanetSwitchDevice> currentDevices = new ArrayList<>(discoveredDevices);
 
         int currentDiscoveredCount = lastDiscoveredCount;
         String currentDuplicateMACs = lastDuplicateMACs;
-        boolean wasDiscoveryCompleted = discoveryCompleted;
 
         getContentPane().removeAll();
 
@@ -877,7 +876,7 @@ public class MainWindow extends JFrame {
 
         restoreProtocolStatus(); // Restore the checkboxs
 
-        if (wasDiscoveryCompleted) {
+        if (appState.equals(APP_STATE.FINAL_STATE)) {
             if (currentDiscoveredCount == 0) {
                 statusLabel.setText(lang.get("status.completed_none"));
             } else {
@@ -887,6 +886,8 @@ public class MainWindow extends JFrame {
                 }
                 statusLabel.setText(statusMsg);
             }
+        } else if (appState.equals(APP_STATE.ADAPTERS_FOUND)) {
+            statusLabel.setText(lang.get("status.ready_adapters", availableAdapters.size()));
         }
 
         // Update title

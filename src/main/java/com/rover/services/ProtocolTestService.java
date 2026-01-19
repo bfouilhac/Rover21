@@ -16,8 +16,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.*;
-import java.security.KeyManagementException;
-import java.security.NoSuchAlgorithmException;
+import java.util.List;
+
 
 public class ProtocolTestService {
 
@@ -34,28 +34,71 @@ public class ProtocolTestService {
     private static final String DEFAULT_PASSWORD = "admin";
     private static final String MAC_PASSWORD_PREFIX = "sw";
 
+    /**
+     * Check if an IPv4 address is in a local private network
+     *
+     * @param ipAddress the address to check
+     * @return either true or false, depends on the RFC1918
+     */
+    private boolean isLocalPrivateNetwork(String ipAddress) {
+        try {
+            InetAddress addr = InetAddress.getByName(ipAddress);
+
+            if (addr.isLoopbackAddress()) {
+                return false; // 127.0.0.1
+            }
+
+            if (addr.isLinkLocalAddress()) {
+                return false; // 169.254.x.x (APIPA)
+            }
+
+            // Accept only private networks RFC1918
+            byte[] bytes = addr.getAddress();
+
+            // 10.0.0.0/8
+            if (bytes[0] == 10) {
+                return true;
+            }
+
+            // 172.16.0.0/12
+            if (bytes[0] == (byte) 172 && (bytes[1] & 0xF0) == 16) {
+                return true;
+            }
+
+            // 192.168.0.0/16
+            return bytes[0] == (byte) 192 && bytes[1] == (byte) 168;
+
+        } catch (UnknownHostException e) {
+            logger.warn("Invalid IP address: {}", ipAddress);
+            return false;
+        }
+    }
+
     public ProtocolTestResult testAllProtocols(String ipAddress, String macAddress) {
         logger.info("Testing protocols for device: {}", ipAddress);
-        long startTime = System.currentTimeMillis();
+        if (isLocalPrivateNetwork(ipAddress)) {
+            long startTime = System.currentTimeMillis();
 
-        ProtocolTestResult result = new ProtocolTestResult(ipAddress);
+            ProtocolTestResult result = new ProtocolTestResult(ipAddress);
 
-        SecurityTestResult sshResult = testSSHSecurity(ipAddress, macAddress);
-        result.setSshAvailable(sshResult.isAvailable());
-        result.setSshSecure(sshResult.isSecure());
+            SecurityTestResult sshResult = testSSHSecurity(ipAddress, macAddress);
+            result.setSshAvailable(sshResult.available());
+            result.setSshSecure(sshResult.secure());
 
-        SecurityTestResult telnetResult = testTelnetSecurity(ipAddress, macAddress);
-        result.setTelnetAvailable(telnetResult.isAvailable());
-        result.setTelnetSecure(telnetResult.isSecure());
+            SecurityTestResult telnetResult = testTelnetSecurity(ipAddress, macAddress);
+            result.setTelnetAvailable(telnetResult.available());
+            result.setTelnetSecure(telnetResult.secure());
 
-        result.setHttpAvailable(isHTTPAvailable(ipAddress));
-        result.setHttpsAvailable(isHTTPSAvailable(ipAddress));
+            result.setHttpAvailable(isHTTPAvailable(ipAddress));
+            result.setHttpsAvailable(isHTTPSAvailable(ipAddress));
 
-        long elapsed = System.currentTimeMillis() - startTime;
-        logger.info("Protocol tests for {} completed in {}ms (security: {})",
-                ipAddress, elapsed, result.getSecurityStatus());
-
-        return result;
+            long elapsed = System.currentTimeMillis() - startTime;
+            logger.info("Protocol tests for {} completed in {}ms (security: {})", ipAddress, elapsed, result.getSecurityStatus());
+            return result;
+        } else {
+            logger.error("Security: rejected non-local IPv4 address: {}", ipAddress);
+            throw new SecurityException("Security rejected non-local IPv4 address: " + ipAddress);
+        }
     }
 
     private SecurityTestResult testTelnetSecurity(String ipAddress, String macAddress) {
@@ -65,23 +108,31 @@ public class ProtocolTestService {
             return new SecurityTestResult(false, true);
         }
 
-        if (testTelnetLogin(ipAddress, telnetPort, DEFAULT_PASSWORD)) {
-            logger.warn("Telnet INSECURE on {}: factory credentials admin/{} work", ipAddress, DEFAULT_PASSWORD);
-            return new SecurityTestResult(true, false);
-        }
+        List<String> customAccList = PreferencesManager.getCustomAccountMap();
+        if (!customAccList.isEmpty()) {
+            for (String i : customAccList) {
+                if (testTelnetLogin(ipAddress, telnetPort, i.split(":")[0], i.split(":")[1])) {
+                    logger.warn("Telnet INSECURE on {}: credentials {}/{} work", ipAddress, i.split(":")[0], i.split(":")[1]);
+                    return new SecurityTestResult(true, false);
+                }
+            }
+        } else {
+            if (testTelnetLogin(ipAddress, telnetPort, DEFAULT_USERNAME, DEFAULT_PASSWORD)) {
+                logger.warn("Telnet INSECURE on {}: factory credentials {}/{} work", ipAddress, DEFAULT_USERNAME, DEFAULT_PASSWORD);
+                return new SecurityTestResult(true, false);
+            }
 
-        String macBasedPassword = generateMACBasedPassword(macAddress);
-        if (!macBasedPassword.equals(DEFAULT_PASSWORD) &&
-                testTelnetLogin(ipAddress, telnetPort, macBasedPassword)) {
-            logger.warn("Telnet INSECURE on {}: factory credentials admin/{} work", ipAddress, macBasedPassword);
-            return new SecurityTestResult(true, false);
+            String macBasedPassword = generateMACBasedPassword(macAddress);
+            if (testTelnetLogin(ipAddress, telnetPort, DEFAULT_USERNAME, macBasedPassword)) {
+                logger.warn("Telnet INSECURE on {}: factory credentials {}/{} work", ipAddress, DEFAULT_USERNAME, macBasedPassword);
+                return new SecurityTestResult(true, false);
+            }
         }
-
-        logger.info("Telnet SECURE on {}: factory credentials rejected", ipAddress);
+        logger.info("Telnet SECURE on {}:", ipAddress);
         return new SecurityTestResult(true, true);
     }
 
-    private boolean testTelnetLogin(String ipAddress, int port, String password) {
+    private boolean testTelnetLogin(String ipAddress, int port, String username, String password) {
         Socket socket = null;
 
         try {
@@ -111,7 +162,7 @@ public class ProtocolTestService {
                         String text = buffer.toString().toLowerCase();
 
                         if (!usernameSent && (text.contains("login:") || text.contains("username:"))) {
-                            out.write((DEFAULT_USERNAME + "\n").getBytes());
+                            out.write((username + "\n").getBytes());
                             out.flush();
                             usernameSent = true;
                             buffer.setLength(0);
@@ -133,14 +184,11 @@ public class ProtocolTestService {
                         }
                     }
                 } catch (SocketTimeoutException e) {
-                    // Continue
+                    logger.error("Error timeout during telnet login :{}", e.getMessage());
                 }
-
-                Thread.sleep(50);
+                Thread.sleep(50); // Small pause between each login
             }
-
             return false;
-
         } catch (Exception e) {
             logger.debug("Telnet login test failed for {}: {}", ipAddress, e.getMessage());
             return false;
@@ -161,29 +209,38 @@ public class ProtocolTestService {
             return new SecurityTestResult(false, true);
         }
 
-        if (testSSHLogin(ipAddress, sshPort, DEFAULT_PASSWORD)) {
-            logger.warn("SSH INSECURE on {}: factory credentials admin/{} work", ipAddress, DEFAULT_PASSWORD);
-            return new SecurityTestResult(true, false);
+        List<String> customAccList = PreferencesManager.getCustomAccountMap();
+        if (!customAccList.isEmpty()) {
+            for (String i : customAccList) {
+                if (testSSHLogin(ipAddress, sshPort, i.split(":")[0], i.split(":")[1])) {
+                    logger.warn("SSH INSECURE on {}: credentials {}/{} work", ipAddress, i.split(":")[0], i.split(":")[1]);
+                    return new SecurityTestResult(true, false);
+                }
+            }
+        } else {
+            if (testSSHLogin(ipAddress, sshPort, DEFAULT_USERNAME, DEFAULT_PASSWORD)) {
+                logger.warn("SSH INSECURE on {}: factory credentials {}/{} work", ipAddress, DEFAULT_USERNAME, DEFAULT_PASSWORD);
+                return new SecurityTestResult(true, false);
+            }
+
+            String macBasedPassword = generateMACBasedPassword(macAddress);
+            if (testSSHLogin(ipAddress, sshPort, DEFAULT_USERNAME, macBasedPassword)) {
+                logger.warn("SSH INSECURE on {}: factory credentials {}/{} work", ipAddress, DEFAULT_USERNAME, macBasedPassword);
+                return new SecurityTestResult(true, false);
+            }
         }
 
-        String macBasedPassword = generateMACBasedPassword(macAddress);
-        if (!macBasedPassword.equals(DEFAULT_PASSWORD) &&
-                testSSHLogin(ipAddress, sshPort, macBasedPassword)) {
-            logger.warn("SSH INSECURE on {}: factory credentials admin/{} work", ipAddress, macBasedPassword);
-            return new SecurityTestResult(true, false);
-        }
-
-        logger.info("SSH SECURE on {}: factory credentials rejected", ipAddress);
+        logger.info("SSH SECURE on {}", ipAddress);
         return new SecurityTestResult(true, true);
     }
 
-    private boolean testSSHLogin(String ipAddress, int port, String password) {
+    private boolean testSSHLogin(String ipAddress, int port, String username, String password) {
         JSch jsch = new JSch();
         Session session = null;
         ChannelShell channel = null;
 
         try {
-            session = jsch.getSession(DEFAULT_USERNAME, ipAddress, port);
+            session = jsch.getSession(username, ipAddress, port);
             session.setPassword(password);
             session.setConfig("StrictHostKeyChecking", "no");
             session.setTimeout(SSH_TIMEOUT);
@@ -386,26 +443,10 @@ public class ProtocolTestService {
         }
     }
 
-    public static class SecurityTestResult {
-        private final boolean available;
-        private final boolean secure;
-
-        public SecurityTestResult(boolean available, boolean secure) {
-            this.available = available;
-            this.secure = secure;
-        }
-
-        public boolean isAvailable() {
-            return available;
-        }
-
-        public boolean isSecure() {
-            return secure;
-        }
+    public record SecurityTestResult(boolean available, boolean secure) {
     }
 
     public static class ProtocolTestResult {
-        private final String ipAddress;
         private boolean telnetAvailable;
         private boolean sshAvailable;
         private boolean httpAvailable;
@@ -414,7 +455,6 @@ public class ProtocolTestService {
         private boolean sshSecure = true;
 
         public ProtocolTestResult(String ipAddress) {
-            this.ipAddress = ipAddress;
         }
 
         public boolean isTelnetAvailable() { return telnetAvailable; }

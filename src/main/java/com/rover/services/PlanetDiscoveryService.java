@@ -25,7 +25,7 @@ import java.util.concurrent.*;
 public class PlanetDiscoveryService {
 
     private static final Logger logger = LoggerFactory.getLogger(PlanetDiscoveryService.class);
-    private static final LanguageManager lang = LanguageManager.getInstance();
+    private final LanguageManager lang = LanguageManager.getInstance();
     private static final int MAX_PACKET_SIZE = 1024;
 
     // magic discovery packet for PLANET switches
