@@ -234,6 +234,25 @@ public class ProtocolTestService {
         return new SecurityTestResult(true, true);
     }
 
+    /**
+     * Tests SSH authentication by attempting to log in with provided credentials.
+     * <p>
+     * This method handles three different SSH server behaviors:
+     * <ol>
+     *   <li><b>Standard login flow:</b> username prompt → password prompt → shell</li>
+     *   <li><b>Double username prompt:</b> username prompt (twice) → password prompt → shell</li>
+     *   <li><b>Double authentication:</b> username/password → username/password (again) → shell</li>
+     * </ol>
+     * The method reads server responses interactively and responds appropriately to
+     * each prompt, handling welcome screens and authentication retries.
+     * </p>
+     *
+     * @param ipAddress the IP address of the device
+     * @param port the SSH port number
+     * @param username the username to test
+     * @param password the password to test
+     * @return true if authentication succeeded and shell prompt was reached, false otherwise
+     */
     private boolean testSSHLogin(String ipAddress, int port, String username, String password) {
         JSch jsch = new JSch();
         Session session = null;
@@ -266,6 +285,11 @@ public class ProtocolTestService {
             long startTime = System.currentTimeMillis();
             StringBuilder fullResponse = new StringBuilder();
 
+            // Track authentication state
+            int usernamePromptCount = 0;
+            int passwordPromptCount = 0;
+            boolean welcomeScreenPassed = false;
+
             while (System.currentTimeMillis() - startTime < SSH_READ_TIMEOUT) {
                 if (in.available() > 0) {
                     byte[] tmp = new byte[1024];
@@ -278,55 +302,111 @@ public class ProtocolTestService {
 
                 String currentResponse = fullResponse.toString().toLowerCase();
 
-                if (currentResponse.contains("press <enter>") ||
-                        currentResponse.contains("press enter") ||
-                        currentResponse.contains("continue...")) {
+                // Handle welcome screens that require <enter>
+                if (!welcomeScreenPassed &&
+                        (currentResponse.contains("press <enter>") ||
+                                currentResponse.contains("press enter") ||
+                                currentResponse.contains("continue..."))) {
                     out.write("\n".getBytes());
                     out.flush();
                     logger.debug("SSH: Sent <enter> to continue past welcome screen on {}", ipAddress);
+                    welcomeScreenPassed = true;
+                    fullResponse.setLength(0); // Clear buffer after welcome screen
                     Thread.sleep(300);
                     continue;
                 }
 
-                if (currentResponse.contains("username:") || currentResponse.contains("user name:")) {
-                    logger.info("SSH server on {} asks for username after welcome screen - treating as NOT authenticated", ipAddress);
-                    return false;
+                // Detect username prompts (case 1, 2, 3)
+                if (currentResponse.contains("username:") ||
+                        currentResponse.contains("user name:") ||
+                        currentResponse.contains("login:")) {
+
+                    usernamePromptCount++;
+                    logger.debug("SSH: Username prompt #{} detected on {}", usernamePromptCount, ipAddress);
+
+                    // Send username
+                    out.write((username + "\n").getBytes());
+                    out.flush();
+                    logger.debug("SSH: Sent username to {} (attempt #{})", ipAddress, usernamePromptCount);
+
+                    fullResponse.setLength(0); // Clear buffer after sending username
+                    Thread.sleep(300);
+
+                    // Handle cases 2 and 3: Allow up to 2 username prompts
+                    if (usernamePromptCount > 2) {
+                        logger.warn("SSH: Too many username prompts on {} - authentication likely failed", ipAddress);
+                        return false;
+                    }
+
+                    continue;
                 }
 
+                // Detect password prompts (case 1, 2, 3)
                 if (currentResponse.contains("password:")) {
-                    logger.info("SSH server on {} asks for password after welcome screen - treating as NOT authenticated", ipAddress);
-                    return false;
+                    passwordPromptCount++;
+                    logger.debug("SSH: Password prompt #{} detected on {}", passwordPromptCount, ipAddress);
+
+                    // Send password
+                    out.write((password + "\n").getBytes());
+                    out.flush();
+                    logger.debug("SSH: Sent password to {} (attempt #{})", ipAddress, passwordPromptCount);
+
+                    fullResponse.setLength(0); // Clear buffer after sending password
+                    Thread.sleep(300);
+
+                    // Handle case 3: Allow up to 2 password prompts (double authentication)
+                    if (passwordPromptCount > 2) {
+                        logger.warn("SSH: Too many password prompts on {} - authentication likely failed", ipAddress);
+                        return false;
+                    }
+
+                    continue;
                 }
 
+                // Detect explicit authentication failures
                 if (currentResponse.contains("denied") ||
                         currentResponse.contains("incorrect") ||
                         currentResponse.contains("failed") ||
-                        currentResponse.contains("invalid")) {
-                    logger.debug("SSH authentication failed for {}: response contains failure keyword", ipAddress);
+                        currentResponse.contains("invalid") ||
+                        currentResponse.contains("authentication failed") ||
+                        currentResponse.contains("access denied")) {
+                    logger.info("SSH authentication explicitly failed for {}: response contains failure keyword", ipAddress);
                     return false;
                 }
 
+                // Detect successful authentication (shell prompt)
                 if (currentResponse.contains("#") ||
                         currentResponse.contains(">") ||
                         currentResponse.contains("$")) {
-                    logger.info("SSH authentication successful for {} - got shell prompt", ipAddress);
+                    logger.info("SSH authentication successful for {} - got shell prompt (username prompts: {}, password prompts: {})",
+                            ipAddress, usernamePromptCount, passwordPromptCount);
                     return true;
                 }
 
                 Thread.sleep(50);
             }
 
+            // Timeout reached - analyze final state
             String finalResponse = fullResponse.toString();
-            logger.info("SSH server response for {} (password=***): [{}]",
-                    ipAddress, finalResponse.replace("\n", "\\n").replace("\r", "\\r"));
+            logger.info("SSH timeout reached for {} after {}ms. Final response: [{}]",
+                    ipAddress, SSH_READ_TIMEOUT, finalResponse.replace("\n", "\\n").replace("\r", "\\r"));
 
+            // If still asking for credentials after timeout, authentication failed
             if (finalResponse.toLowerCase().contains("username:") ||
-                    finalResponse.toLowerCase().contains("password:")) {
-                logger.warn("SSH authentication incomplete on {} - still asking for credentials", ipAddress);
+                    finalResponse.toLowerCase().contains("password:") ||
+                    finalResponse.toLowerCase().contains("login:")) {
+                logger.warn("SSH authentication incomplete on {} - still asking for credentials after timeout", ipAddress);
                 return false;
             }
 
-            logger.warn("SSH response unclear on {} - treating as authentication failure", ipAddress);
+            // If we sent credentials but got no clear response, treat as failure
+            if (usernamePromptCount > 0 || passwordPromptCount > 0) {
+                logger.warn("SSH response unclear on {} after sending credentials - treating as authentication failure", ipAddress);
+                return false;
+            }
+
+            // No prompts detected at all - unclear state
+            logger.warn("SSH response unclear on {} - no prompts detected, treating as authentication failure", ipAddress);
             return false;
 
         } catch (JSchException e) {
