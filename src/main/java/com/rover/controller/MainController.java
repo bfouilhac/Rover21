@@ -465,7 +465,7 @@ public class MainController implements MainWindow.UIEventListener {
                     expectedProtocolTests = devices.size();
                     completedProtocolTests = 0;
 
-                    // If no devices found, go directly to final state
+                    // If no devices found, go directly to the final state
                     if (devices.isEmpty()) {
                         view.setAppState(APP_STATE.FINAL_STATE);
                     }
