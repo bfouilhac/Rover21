@@ -3,6 +3,7 @@ package com.rover.controller;
 import com.rover.model.NetworkInterfaceCustom;
 import com.rover.model.PlanetSwitchDevice;
 import com.rover.services.DiscoveryCallback;
+import com.rover.services.ExportService;
 import com.rover.services.NetworkAdapterService;
 import com.rover.services.PlanetDiscoveryService;
 import com.rover.services.ProtocolTestService;
@@ -15,6 +16,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.swing.*;
+import javax.swing.filechooser.FileNameExtensionFilter;
+import java.io.File;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -45,6 +48,10 @@ public class MainController implements MainWindow.UIEventListener {
     private final NetworkAdapterService adapterService;
 
     private final PlanetDiscoveryService discoveryService;
+
+    // Protocol enrichment tracking
+    private int expectedProtocolTests = 0;
+    private int completedProtocolTests = 0;
 
     /**
      * Constructs a new MainController and initializes all required services.
@@ -118,6 +125,10 @@ public class MainController implements MainWindow.UIEventListener {
     public void onDiscoverClicked(NetworkInterfaceCustom selectedAdapter) {
         view.clearResults();
         logger.info("Discover clicked for adapter: {}", selectedAdapter.getName());
+
+        // Reset protocol test tracking
+        expectedProtocolTests = 0;
+        completedProtocolTests = 0;
 
         if (!adapterService.isAdapterValid(selectedAdapter)) {
             showInvalidAdapterError();
@@ -235,11 +246,80 @@ public class MainController implements MainWindow.UIEventListener {
     public void onExportClicked(List<PlanetSwitchDevice> devices) {
         logger.info("Export clicked: {} devices", devices.size());
 
-        // TODO: Implement CSV export functionality
-        view.showInfo(
-                lang.get("info.export_title"),
-                lang.get("info.export_message", devices.size())
+        // Step 1: Ask user to choose export format (CSV or XLSX)
+        Object[] options = {
+                lang.get("info.export_format_csv"),
+                lang.get("info.export_format_xlsx")
+        };
+
+        int choice = JOptionPane.showOptionDialog(
+                view,
+                lang.get("info.export_format_message"),
+                lang.get("info.export_format_title"),
+                JOptionPane.DEFAULT_OPTION,
+                JOptionPane.QUESTION_MESSAGE,
+                null,
+                options,
+                options[0]
         );
+
+        // User cancelled
+        if (choice == JOptionPane.CLOSED_OPTION) {
+            logger.info("Export cancelled by user");
+            return;
+        }
+
+        boolean isCsv = (choice == 0);
+        String fileExtension = isCsv ? "csv" : "xlsx";
+        String fileDescription = isCsv ? "CSV Files (*.csv)" : "Excel Files (*.xlsx)";
+
+        // Step 2: Open file chooser to select save location
+        JFileChooser fileChooser = new JFileChooser();
+        fileChooser.setDialogTitle(lang.get("info.export_title"));
+        fileChooser.setFileFilter(new FileNameExtensionFilter(fileDescription, fileExtension));
+        fileChooser.setSelectedFile(new File("planet_devices_export." + fileExtension));
+
+        int result = fileChooser.showSaveDialog(view);
+
+        if (result != JFileChooser.APPROVE_OPTION) {
+            logger.info("Export cancelled by user at file selection");
+            view.showInfo(
+                    lang.get("info.export_cancelled_title"),
+                    lang.get("info.export_cancelled_message")
+            );
+            return;
+        }
+
+        File selectedFile = fileChooser.getSelectedFile();
+
+        // Ensure file has correct extension
+        if (!selectedFile.getName().toLowerCase().endsWith("." + fileExtension)) {
+            selectedFile = new File(selectedFile.getAbsolutePath() + "." + fileExtension);
+        }
+
+        // Step 3: Perform the export
+        ExportService exportService = new ExportService();
+
+        try {
+            if (isCsv) {
+                exportService.exportToCSV(devices, selectedFile);
+            } else {
+                exportService.exportToXLSX(devices, selectedFile);
+            }
+
+            logger.info("Export successful: {} devices exported to {}", devices.size(), selectedFile.getAbsolutePath());
+            view.showInfo(
+                    lang.get("info.export_success_title"),
+                    lang.get("info.export_success_message", devices.size(), selectedFile.getAbsolutePath())
+            );
+
+        } catch (Exception e) {
+            logger.error("Export failed", e);
+            view.showError(
+                    lang.get("info.export_error_title"),
+                    lang.get("info.export_error_message", e.getMessage())
+            );
+        }
     }
 
     /**
@@ -388,6 +468,9 @@ public class MainController implements MainWindow.UIEventListener {
 
                 Integer lockStatus = result.getSecurityLockStatus();
                 view.setSecurityStatus(mac, lockStatus);
+
+                // Track protocol test completion
+                checkProtocolTestsCompletion();
             }
 
             /**
@@ -402,7 +485,17 @@ public class MainController implements MainWindow.UIEventListener {
                     processDiscoveryResults(devices);
 
                     logger.info("Discovery completed: {} device(s) found", devices.size());
-                    view.setAppState(APP_STATE.FINAL_STATE);
+
+                    // Initialize protocol test tracking
+                    expectedProtocolTests = devices.size();
+                    completedProtocolTests = 0;
+
+                    // If no devices found, go directly to final state
+                    if (devices.isEmpty()) {
+                        view.setAppState(APP_STATE.FINAL_STATE);
+                    }
+                    // Otherwise, wait for protocol tests to complete
+                    // (FINAL_STATE will be set when all protocol tests are done)
 
                 } catch (Exception e) {
                     handleDiscoveryError(e);
@@ -446,6 +539,29 @@ public class MainController implements MainWindow.UIEventListener {
         };
 
         worker.execute();
+    }
+
+    /**
+     * Checks if all protocol tests have completed and updates the UI accordingly.
+     * <p>
+     * This method is called from the protocol test callback and is synchronized
+     * to ensure thread-safe counting of completed tests.
+     * </p>
+     */
+    private synchronized void checkProtocolTestsCompletion() {
+        completedProtocolTests++;
+        logger.debug("Protocol tests completed: {}/{}", completedProtocolTests, expectedProtocolTests);
+
+        if (completedProtocolTests >= expectedProtocolTests && expectedProtocolTests > 0) {
+            logger.info("All protocol tests completed for {} device(s)", expectedProtocolTests);
+
+            // Update status to show enrichment is complete
+            SwingUtilities.invokeLater(() -> {
+                view.setAppState(APP_STATE.PROTOCOL_TEST_END);
+                view.setStatusMessage(lang.get("status.enrichment_complete", expectedProtocolTests));
+                view.setAppState(APP_STATE.FINAL_STATE);
+            });
+        }
     }
 
     /**
