@@ -25,6 +25,11 @@ public class PlanetSwitchDevice {
 
     private boolean isOnline;
 
+    private boolean isTelnetUp = false;
+    private boolean isSSHUp = false;
+    private boolean isHTTPUp = false;
+    private boolean isHTTPSUp = false;
+
     // SNMP Data
     private String systemLocation; // System location retrieved via SNMP (e.g., "Building A, Floor 2").
     private String systemUptime; // System uptime in format "DD:HH:MM:SS".
@@ -121,6 +126,35 @@ public class PlanetSwitchDevice {
     }
 
     /**
+     * Returns if Telnet is enabled on this device.
+     *
+     * @return either true or false
+     */
+    public boolean isTelnetUp() {return isTelnetUp;}
+
+    /**
+     * Returns if SSH is enabled on this device.
+     *
+     * @return either true or false
+     */
+    public boolean isSSHUp() {return isSSHUp;}
+
+    /**
+     * Returns if HTTP is enabled on this device.
+     *
+     * @return either true or false
+     */
+    public boolean isHTTPUp() {return isHTTPUp;}
+
+    /**
+     * Returns if HTTPS is enabled on this device.
+     *
+     * @return either true or false
+     */
+    public boolean isHTTPSUp() {return isHTTPSUp;}
+
+
+    /**
      * Sets the MAC address of the switch.
      *
      * @param macAddress the MAC address in format "XX:XX:XX:XX:XX:XX"
@@ -209,6 +243,37 @@ public class PlanetSwitchDevice {
     public void setSystemUptime(String systemUptime) {
         this.systemUptime = systemUptime;
     }
+
+    /**
+     * Sets to true if Telnet is enabled on this device
+     *
+     * @param isTelnetUp the result of the protocol test
+     */
+    public void setTelnetUp(boolean isTelnetUp) {this.isTelnetUp = isTelnetUp;}
+
+    /**
+     * Sets to true if SSH is enabled on this device
+     *
+     * @param isSSHUp the result of the protocol test
+     */
+    public void setSSHUp(boolean isSSHUp) {this.isSSHUp = isSSHUp;}
+
+    /**
+     * Sets to true if HTTP is enabled on this device
+     *
+     * @param isHTTPUp the result of the protocol test
+     */
+    public void setHTTPUp(boolean isHTTPUp) {this.isHTTPUp = isHTTPUp;}
+
+    /**
+     * Sets to true if HTTPS is enabled on this device
+     *
+     * @param isHTTPSUp the result of the protocol test
+     */
+    public void setHTTPSUp(boolean isHTTPSUp) {this.isHTTPSUp = isHTTPSUp;}
+
+
+
 
     /**
      * Returns a string representation of this device with key information.

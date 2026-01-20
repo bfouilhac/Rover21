@@ -243,45 +243,20 @@ public class MainController implements MainWindow.UIEventListener {
      * @see MainWindow#showInfo(String, String)
      */
     @Override
-    public void onExportClicked(List<PlanetSwitchDevice> devices) {
+    public void onExportClicked(List<PlanetSwitchDevice> devices, String fileType) {
         logger.info("Export clicked: {} devices", devices.size());
 
-        // Step 1: Ask user to choose export format (CSV or XLSX)
-        Object[] options = {
-                lang.get("info.export_format_csv"),
-                lang.get("info.export_format_xlsx")
-        };
-
-        int choice = JOptionPane.showOptionDialog(
-                view,
-                lang.get("info.export_format_message"),
-                lang.get("info.export_format_title"),
-                JOptionPane.DEFAULT_OPTION,
-                JOptionPane.QUESTION_MESSAGE,
-                null,
-                options,
-                options[0]
-        );
-
-        // User cancelled
-        if (choice == JOptionPane.CLOSED_OPTION) {
-            logger.info("Export cancelled by user");
-            return;
-        }
-
-        boolean isCsv = (choice == 0);
-        String fileExtension = isCsv ? "csv" : "xlsx";
+        boolean isCsv = fileType.equals("CSV");
+        String fileExtension = fileType.toLowerCase();
         String fileDescription = isCsv ? "CSV Files (*.csv)" : "Excel Files (*.xlsx)";
 
-        // Step 2: Open file chooser to select save location
+        // Open the file chooser to select save location
         JFileChooser fileChooser = new JFileChooser();
         fileChooser.setDialogTitle(lang.get("info.export_title"));
         fileChooser.setFileFilter(new FileNameExtensionFilter(fileDescription, fileExtension));
         fileChooser.setSelectedFile(new File("planet_devices_export." + fileExtension));
 
-        int result = fileChooser.showSaveDialog(view);
-
-        if (result != JFileChooser.APPROVE_OPTION) {
+        if (fileChooser.showSaveDialog(view) != JFileChooser.APPROVE_OPTION) {
             logger.info("Export cancelled by user at file selection");
             view.showInfo(
                     lang.get("info.export_cancelled_title"),
@@ -292,13 +267,12 @@ public class MainController implements MainWindow.UIEventListener {
 
         File selectedFile = fileChooser.getSelectedFile();
 
-        // Ensure file has correct extension
+        // Ensure a file has the correct extension
         if (!selectedFile.getName().toLowerCase().endsWith("." + fileExtension)) {
             selectedFile = new File(selectedFile.getAbsolutePath() + "." + fileExtension);
         }
 
-        // Step 3: Perform the export
-        ExportService exportService = new ExportService();
+        ExportService exportService = new ExportService(); // Perform the export
 
         try {
             if (isCsv) {
@@ -447,8 +421,7 @@ public class MainController implements MainWindow.UIEventListener {
                     }
 
                     @Override
-                    public void onProtocolsTestedCallback(PlanetSwitchDevice device,
-                                                          ProtocolTestService.ProtocolTestResult result) {
+                    public void onProtocolsTestedCallback(PlanetSwitchDevice device, ProtocolTestService.ProtocolTestResult result) {
                         updateProtocolStatus(device, result);
                     }
                 };
@@ -457,17 +430,19 @@ public class MainController implements MainWindow.UIEventListener {
             /**
              * Updates the protocol status in the UI.
              */
-            private void updateProtocolStatus(PlanetSwitchDevice device,
-                                              ProtocolTestService.ProtocolTestResult result) {
+            private void updateProtocolStatus(PlanetSwitchDevice device, ProtocolTestService.ProtocolTestResult result) {
                 String mac = device.getMacAddress();
 
                 view.setProtocolStatus(mac, "telnet", result.isTelnetAvailable());
                 view.setProtocolStatus(mac, "ssh", result.isSshAvailable());
                 view.setProtocolStatus(mac, "http", result.isHttpAvailable());
                 view.setProtocolStatus(mac, "https", result.isHttpsAvailable());
+                view.setSecurityStatus(mac, result.getSecurityLockStatus());
 
-                Integer lockStatus = result.getSecurityLockStatus();
-                view.setSecurityStatus(mac, lockStatus);
+                device.setTelnetUp(result.isTelnetAvailable());
+                device.setSSHUp(result.isSshAvailable());
+                device.setHTTPUp(result.isHttpAvailable());
+                device.setHTTPSUp(result.isHttpsAvailable());
 
                 // Track protocol test completion
                 checkProtocolTestsCompletion();

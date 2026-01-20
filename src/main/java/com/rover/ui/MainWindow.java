@@ -155,7 +155,7 @@ public class MainWindow extends JFrame {
          *
          * @param devices the devices to export
          */
-        void onExportClicked(List<PlanetSwitchDevice> devices);
+        void onExportClicked(List<PlanetSwitchDevice> devices, String fileType);
 
         /**
          * Called when clear results are requested.
@@ -319,8 +319,7 @@ public class MainWindow extends JFrame {
                 logger.debug("Set {} status to {} for device at row {}", protocol, isAvailable, row);
             }
 
-            protocolStatusCache.computeIfAbsent(macAddress, k -> new HashMap<>())
-                    .put(protocol.toLowerCase(), isAvailable);
+            protocolStatusCache.computeIfAbsent(macAddress, k -> new HashMap<>()).put(protocol.toLowerCase(), isAvailable);
         }
     }
 
@@ -485,8 +484,7 @@ public class MainWindow extends JFrame {
     private JMenu createFileMenu() {
         JMenu fileMenu = new JMenu(lang.get("menu.file"));
 
-        JMenuItem exportItem = new JMenuItem(lang.get("menu.export"));
-        exportItem.addActionListener(e -> handleExport());
+        JMenu exportItem = new JMenu(lang.get("menu.export"));
 
         JMenuItem quitItem = new JMenuItem(lang.get("menu.quit"));
         quitItem.addActionListener(e -> {
@@ -494,9 +492,17 @@ public class MainWindow extends JFrame {
             System.exit(0);
         });
 
+        JMenuItem csvItem = new JMenuItem("CSV");
+        csvItem.addActionListener(e -> handleExport("CSV"));
+
+        JMenuItem xlsxItem = new JMenuItem("XLSX");
+        xlsxItem.addActionListener(e -> handleExport("XLSX"));
+
         fileMenu.add(exportItem);
         fileMenu.addSeparator();
         fileMenu.add(quitItem);
+        exportItem.add(csvItem);
+        exportItem.add(xlsxItem);
 
         return fileMenu;
     }
@@ -968,14 +974,14 @@ public class MainWindow extends JFrame {
     /**
      * Handles the export menu action.
      */
-    private void handleExport() {
+    private void handleExport(String fileType) {
         if (discoveredDevices.isEmpty()) {
             showInfo(lang.get("info.no_data_title"), lang.get("info.no_data_message"));
             return;
         }
 
         if (eventListener != null) {
-            eventListener.onExportClicked(new ArrayList<>(discoveredDevices));
+            eventListener.onExportClicked(new ArrayList<>(discoveredDevices), fileType);
         }
     }
 

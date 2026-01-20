@@ -30,7 +30,7 @@ public class ExportService {
      * Exports a list of devices to a CSV file.
      *
      * @param devices the list of devices to export
-     * @param file    the target CSV file
+     * @param file the target CSV file
      * @throws IOException if an I/O error occurs during export
      */
     public void exportToCSV(List<PlanetSwitchDevice> devices, File file) throws IOException {
@@ -59,7 +59,7 @@ public class ExportService {
      * Exports a list of devices to an XLSX file.
      *
      * @param devices the list of devices to export
-     * @param file    the target XLSX file
+     * @param file the target XLSX file
      * @throws IOException if an I/O error occurs during export
      */
     public void exportToXLSX(List<PlanetSwitchDevice> devices, File file) throws IOException {
@@ -68,7 +68,7 @@ public class ExportService {
         try (Workbook workbook = new XSSFWorkbook()) {
             Sheet sheet = workbook.createSheet("PLANET Devices");
 
-            // Create header row
+            // Create a header row
             Row headerRow = sheet.createRow(0);
             String[] headers = getHeaders();
             CellStyle headerStyle = createHeaderStyle(workbook);
@@ -153,7 +153,11 @@ public class ExportService {
                 lang.get("table.gateway"),
                 lang.get("table.description"),
                 lang.get("table.location"),
-                lang.get("table.uptime")
+                lang.get("table.uptime"),
+                "Telnet",
+                "SSH",
+                "HTTP",
+                "HTTPS"
         };
     }
 
@@ -169,7 +173,7 @@ public class ExportService {
      * Converts a device to a CSV row.
      */
     private String deviceToCsvRow(PlanetSwitchDevice device) {
-        return String.format("%s,%s,%s,%s,%s,%s,%s,%s,%s",
+        return String.format("%s,%s,%s,%s,%s,%s,%s,%s,%s,%b,%b,%b,%b",
                 escapeCsv(device.getDeviceName()),
                 escapeCsv(device.getMacAddress()),
                 escapeCsv(device.getVersion()),
@@ -178,7 +182,11 @@ public class ExportService {
                 escapeCsv(device.getGateway()),
                 escapeCsv(device.getDescription()),
                 escapeCsv(device.getSystemLocation()),
-                escapeCsv(device.getSystemUptime())
+                escapeCsv(device.getSystemUptime()),
+                device.isTelnetUp(),
+                device.isSSHUp(),
+                device.isHTTPUp(),
+                device.isHTTPSUp()
         );
     }
 

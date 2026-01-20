@@ -356,8 +356,7 @@ public class PlanetDiscoveryService {
             try {
                 logger.info("Protocol tests starting for {}", device.getIpAddress());
 
-                ProtocolTestService.ProtocolTestResult result =
-                        protocolService.testAllProtocols(device.getIpAddress(), device.getMacAddress());
+                ProtocolTestService.ProtocolTestResult result = protocolService.testAllProtocols(device.getIpAddress(), device.getMacAddress());
 
                 long elapsed = System.currentTimeMillis() - startTime;
                 logger.info("Protocol tests for {} completed in {}ms", device.getIpAddress(), elapsed);
