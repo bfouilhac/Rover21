@@ -46,7 +46,6 @@ public class ProtocolTestService {
 
     // Default ports
     private static final int HTTP_PORT = 80;
-    private static final int HTTPS_PORT = 443;
 
     // Default credentials for security testing
     private static final String DEFAULT_USERNAME = "admin";

@@ -4,6 +4,7 @@ import com.rover.model.NetworkInterfaceCustom;
 import com.rover.model.PlanetSwitchDevice;
 import com.rover.utils.LanguageManager;
 import com.rover.utils.PreferencesManager;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -11,36 +12,71 @@ import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.table.*;
 import java.awt.*;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import static com.rover.utils.PreferencesManager.*;
-
 /**
- * The main window of Rover21 using Java Swing and FlatLightLaf.
- * Now supports internationalization (i18n) with English and French languages.
- * @see <a href="https://docs.oracle.com/javase/8/docs/api/javax/swing/package-summary.html"> Java Swing </a>
- * @see <a href="https://www.formdev.com/flatlaf/"> FlatLaf</a>
- * @author Benjamin FOUILHAC, ADM21 in January-February 2026.
+ * The main window of the Rover21 application using Java Swing and FlatLightLaf.
+ * <p>
+ * This class represents the View component of the MVC architecture. It provides
+ * the user interface for network adapter selection, device discovery, and results
+ * display. The window supports internationalization (i18n) with English and French.
+ * </p>
+ *
+ * @author Benjamin FOUILHAC, ADM21 - January/February 2026
+ * @see <a href="https://docs.oracle.com/javase/8/docs/api/javax/swing/package-summary.html">Java Swing</a>
+ * @see <a href="https://www.formdev.com/flatlaf/">FlatLaf</a>
  */
 public class MainWindow extends JFrame {
 
-    // Modern font for the app using Segoe UI
-    private static final Font MODERN_FONT = new Font("Segoe UI", Font.PLAIN, 13);
-    private static final Font TABLE_FONT = new Font("Segoe UI", Font.PLAIN, 12);
-    private static final int BUTTON_WIDTH = 130;
-    private static final int BUTTON_HEIGHT = 32;
-    private static final Color ALTERNATE_TABLE_COLOR = new Color(224, 224, 224);
-
     private static final Logger logger = LoggerFactory.getLogger(MainWindow.class);
 
-    // Language manager for translations
+    private static final Font FONT_MODERN = new Font("Segoe UI", Font.PLAIN, 13);
+    private static final Font FONT_TABLE = new Font("Segoe UI", Font.PLAIN, 12);
+
+    private static final int BUTTON_WIDTH = 130;
+    private static final int BUTTON_HEIGHT = 32;
+
+    private static final Color COLOR_ALTERNATE_ROW = new Color(224, 224, 224);
+    private static final Color COLOR_STATUS_BACKGROUND = new Color(227, 242, 253);
+    private static final Color COLOR_STATUS_BORDER = new Color(144, 202, 249);
+    private static final Color COLOR_STATUS_TEXT = new Color(25, 118, 210);
+    private static final Color COLOR_TABLE_GRID = new Color(220, 220, 220);
+    private static final Color COLOR_HEADER_BACKGROUND = new Color(245, 245, 245);
+    private static final Color COLOR_HEADER_TEXT = new Color(60, 60, 60);
+
+    private static final int DEFAULT_WINDOW_WIDTH = 1200;
+    private static final int DEFAULT_WINDOW_HEIGHT = 700;
+
+    private static final int COMBO_BOX_WIDTH = 400;
+    private static final int COMBO_BOX_HEIGHT = 30;
+
+    // Table column indices
+    private static final int COL_LOCK = 0;
+    private static final int COL_DEVICE_NAME = 1;
+    private static final int COL_MAC = 2;
+    private static final int COL_FIRMWARE = 3;
+    private static final int COL_IPV4 = 4;
+    private static final int COL_NETMASK = 5;
+    private static final int COL_GATEWAY = 6;
+    private static final int COL_DESCRIPTION = 7;
+    private static final int COL_LOCATION = 8;
+    private static final int COL_UPTIME = 9;
+    private static final int COL_TELNET = 10;
+    private static final int COL_SSH = 11;
+    private static final int COL_HTTP = 12;
+    private static final int COL_HTTPS = 13;
+
     private final LanguageManager lang = LanguageManager.getInstance();
 
-    // UI elements
+    private final Map<String, Map<String, Boolean>> protocolStatusCache = new HashMap<>();
+    private final Map<String, Integer> securityStatusCache = new HashMap<>();
+
+    // UI Components
     private JComboBox<NetworkInterfaceCustom> adapterComboBox;
     private JProgressBar progressBar;
     private JLabel statusLabel;
@@ -48,554 +84,213 @@ public class MainWindow extends JFrame {
     private JTable devicesTable;
     private DefaultTableModel tableModel;
 
-    private final Map<String, Map<String, JCheckBox>> deviceCheckboxes = new HashMap<>();
-
-    // Protocol status cache (MAC -> Protocol -> Status)
-    private final Map<String, Map<String, Boolean>> protocolStatusCache = new HashMap<>();
-
-    // Actions buttons
-    private JButton updateDeviceBtn;
-    private JButton updateMultiBtn;
-    private JButton updateAllBtn;
-    private JButton connectBtn;
+    // Action buttons
+    private JButton updateDeviceButton;
+    private JButton updateMultiButton;
+    private JButton updateAllButton;
+    private JButton connectButton;
     private JButton discoverButton;
-    private JButton refreshNetIntsButton;
+    private JButton refreshAdaptersButton;
 
-    // List of network interfaces
+    // Data lists
     private List<PlanetSwitchDevice> discoveredDevices;
     private List<NetworkInterfaceCustom> availableAdapters;
 
-    // Listener for UI events
-    private UIEventListener eventListener;
+    private UIEventListener eventListener; // Listener for UI events (controller).
 
-    // Discovery state to preserve after language change
     private int lastDiscoveredCount = 0;
-    private String lastDuplicateMACs = "";
-    private boolean discoveryCompleted = false;
+    private String lastDuplicateMacs = "";
 
-    // Security status cache (MAC -> Status)
-    private Map<String, Integer> securityStatusCache = new HashMap<>();
-
-    private APP_STATE appState;
+    private APP_STATE appState; // Current application state.
 
     /**
      * Interface for callbacks to the MainController.
+     * <p>
+     * This interface defines all user interaction events that the controller
+     * needs to handle. The main window calls these methods when the user
+     * performs actions like clicking buttons or menu items.
+     * </p>
+     *
      * @see com.rover.controller.MainController
      */
     public interface UIEventListener {
+
+        /**
+         * Called when the discovery button is clicked.
+         *
+         * @param selectedAdapter the network adapter selected for discovery
+         */
         void onDiscoverClicked(NetworkInterfaceCustom selectedAdapter);
+
+        /**
+         * Called when the update device button is clicked.
+         *
+         * @param device the device to update
+         */
         void onUpdateDeviceClicked(PlanetSwitchDevice device);
+
+        /**
+         * Called when the update multi button is clicked.
+         *
+         * @param devices the list of selected devices to update
+         */
         void onUpdateMultiClicked(List<PlanetSwitchDevice> devices);
+
+        /**
+         * Called when the update-all button is clicked.
+         *
+         * @param devices all discovered devices
+         */
         void onUpdateAllClicked(List<PlanetSwitchDevice> devices);
+
+        /**
+         * Called when the connection button is clicked.
+         *
+         * @param device the device to connect to
+         */
         void onConnectToDeviceClicked(PlanetSwitchDevice device);
+
+        /**
+         * Called when the export menu item is clicked.
+         *
+         * @param devices the devices to export
+         */
         void onExportClicked(List<PlanetSwitchDevice> devices);
+
+        /**
+         * Called when clear results are requested.
+         */
         void onClearResultsClicked();
+
+        /**
+         * Called when refresh adapters are requested.
+         */
         void onRefreshAdaptersClicked();
     }
 
-    public void setAppState(APP_STATE appState) {
-        this.appState = appState;
-    }
-
     /**
-     * Constructor initiates all the graphics elements and sets the font.
+     * Constructs the main window and initializes all UI components.
+     * <p>
+     * The constructor sets up the window frame, creates all panels and components,
+     * centers the window on screen, and restores the saved window size.
+     * </p>
      */
     public MainWindow() {
         this.discoveredDevices = new ArrayList<>();
         this.availableAdapters = new ArrayList<>();
 
-        setUIFont();
+        initializeFonts();
         initializeFrame();
         createMenuBar();
         createToolbar();
         createCenterPanel();
         createBottomPanel();
 
-        // Center the window
         setLocationRelativeTo(null);
-        toFront(); // Brings the window to the front so it can be visible easily
-        setupWindowListener(); // Setting up the listener so we can know when the window is closed
-
+        toFront();
+        setupWindowListener();
         restoreWindowState();
+
         appState = APP_STATE.INIT;
 
         logger.info("MainWindow initialized with language: {}", lang.getCurrentLanguageCode());
     }
 
     /**
-     * Sets up the window listener to save state on close. (mostly to save the dimensions)
+     * Sets the current application state.
+     *
+     * @param appState the new application state
      */
-    private void setupWindowListener() {
-        addWindowListener(new java.awt.event.WindowAdapter() {
-            @Override
-            public void windowClosing(java.awt.event.WindowEvent windowEvent) {
-                saveWindowState();
-            }
-        });
+    public void setAppState(APP_STATE appState) {
+        this.appState = appState;
     }
 
     /**
-     * Saves the current window size in the preferences.
-     * @see PreferencesManager
-     */
-    private void saveWindowState() {
-        PreferencesManager.saveWindowSize(getWidth(), getHeight());
-        logger.info("Window state saved: {}x{} at ({}, {})", getWidth(), getHeight(), getX(), getY());
-    }
-
-    /**
-     * Restores the saved window size.
-     * @see PreferencesManager
-     */
-    private void restoreWindowState() {
-        int width = PreferencesManager.getWindowWidth(1200);
-        int height = PreferencesManager.getWindowHeight(700);
-        setSize(width, height);
-        logger.info("Window state restored : {}x{} at", width, height);
-    }
-
-    /**
-     * Sets the font for all the components.
-     * @see UIManager
-     */
-    private void setUIFont() {
-        UIManager.put("Button.font", MODERN_FONT);
-        UIManager.put("Label.font", MODERN_FONT);
-        UIManager.put("ComboBox.font", MODERN_FONT);
-        UIManager.put("Table.font", TABLE_FONT);
-        UIManager.put("TableHeader.font", TABLE_FONT);
-        UIManager.put("Menu.font", MODERN_FONT);
-        UIManager.put("MenuItem.font", MODERN_FONT);
-        UIManager.put("CheckBoxMenuItem.font", MODERN_FONT);
-    }
-
-    /**
-     * Defines the listener used for all the user interactions.
-     * @param listener the UIEventListener you want to set up.
-     * @see UIEventListener
+     * Sets the event listener for UI events.
+     *
+     * @param listener the UIEventListener to handle events
      */
     public void setEventListener(UIEventListener listener) {
         this.eventListener = listener;
     }
 
     /**
-     * Initializes the main window frame with a translated title.
-     */
-    private void initializeFrame() {
-        setTitle(lang.get("window.title"));
-        setSize(getWindowWidth(1200), getWindowHeight(700));
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setLayout(new BorderLayout());
-    }
-
-    /**
-     * Creates the menu bar with translated menu items.
-     */
-    private void createMenuBar() {
-        JMenuBar menuBar = new JMenuBar();
-
-        // Menu File
-        JMenu fileMenu = new JMenu(lang.get("menu.file"));
-        JMenuItem exportItem = new JMenuItem(lang.get("menu.export"));
-        exportItem.addActionListener(e -> handleExport());
-        JMenuItem quitItem = new JMenuItem(lang.get("menu.quit"));
-        quitItem.addActionListener(e -> {
-            saveWindowSize(this.getWidth(),  this.getHeight());
-            System.exit(0);
-        });
-
-        fileMenu.add(exportItem);
-        fileMenu.addSeparator();
-        fileMenu.add(quitItem);
-
-        // Menu Edit
-        JMenu editMenu = new JMenu(lang.get("menu.edit"));
-        JMenuItem preferencesItem = new JMenuItem(lang.get("menu.preferences"));
-        preferencesItem.addActionListener(e -> showPreferences());
-        JMenuItem clearItem = new JMenuItem(lang.get("menu.clear"));
-        clearItem.addActionListener(e -> handleClearResults());
-
-        editMenu.add(preferencesItem);
-        editMenu.add(clearItem);
-
-        // Add Language submenu
-        JMenu languageMenu = new JMenu(lang.get("menu.language"));
-
-        JMenuItem englishItem = new JMenuItem("English");
-        englishItem.addActionListener(e -> changeLanguage("en"));
-
-        JMenuItem frenchItem = new JMenuItem("Français");
-        frenchItem.addActionListener(e -> changeLanguage("fr"));
-
-        languageMenu.add(englishItem);
-        languageMenu.add(frenchItem);
-
-        editMenu.addSeparator();
-        editMenu.add(languageMenu);
-
-        // Menu View
-        JMenu viewMenu = new JMenu(lang.get("menu.view"));
-        JCheckBoxMenuItem detailsItem = new JCheckBoxMenuItem(lang.get("menu.show_details"), true);
-        viewMenu.add(detailsItem);
-
-        // Menu Help
-        JMenu helpMenu = new JMenu(lang.get("menu.help"));
-        JMenuItem docItem = new JMenuItem(lang.get("menu.documentation"));
-        docItem.addActionListener(e -> showDocumentation());
-        JMenuItem aboutItem = new JMenuItem(lang.get("menu.about"));
-        aboutItem.addActionListener(e -> showAbout());
-
-        helpMenu.add(docItem);
-        helpMenu.add(aboutItem);
-
-        // Add all menus
-        menuBar.add(fileMenu);
-        menuBar.add(editMenu);
-        menuBar.add(viewMenu);
-        menuBar.add(helpMenu);
-
-        setJMenuBar(menuBar);
-    }
-
-    /**
-     * Creates the toolbar with the main controls.
-     */
-    private void createToolbar() {
-        JPanel toolbar = new JPanel();
-        toolbar.setLayout(new BorderLayout());
-        toolbar.setBorder(new EmptyBorder(12, 15, 12, 15));
-
-        // Left panel with the label, combobox, and refresh button
-        JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
-
-        JLabel adapterLabel = new JLabel(lang.get("toolbar.network_interface"));
-        adapterLabel.setFont(MODERN_FONT);
-
-        adapterComboBox = new JComboBox<>();
-        adapterComboBox.setFont(MODERN_FONT);
-        adapterComboBox.setPreferredSize(new Dimension(400, 30));
-        adapterComboBox.setToolTipText(lang.get("toolbar.network_interface"));
-        adapterComboBox.setRenderer(new DefaultListCellRenderer() {
-            @Override
-            public Component getListCellRendererComponent(JList<?> list, Object value,
-                                                          int index, boolean isSelected, boolean cellHasFocus) {
-                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-                setFont(MODERN_FONT);
-                if (value instanceof NetworkInterfaceCustom adapter) {
-                    setText(adapter.toDisplayString());
-                }
-                return this;
-            }
-        });
-
-        // Refresh button
-        refreshNetIntsButton = new JButton(lang.get("toolbar.refresh_adapters"));
-        refreshNetIntsButton.setPreferredSize(new Dimension(BUTTON_WIDTH, BUTTON_HEIGHT));
-        refreshNetIntsButton.setFont(MODERN_FONT);
-        refreshNetIntsButton.setFocusPainted(false);
-        refreshNetIntsButton.setToolTipText(lang.get("toolbar.refresh_adapters_tip"));
-        refreshNetIntsButton.addActionListener(e -> handleRefreshAdapters());
-
-        leftPanel.add(adapterLabel);
-        leftPanel.add(adapterComboBox);
-        leftPanel.add(refreshNetIntsButton);
-
-        // Right panel with progress bar and discover button
-        JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
-
-        progressBar = new JProgressBar();
-        progressBar.setIndeterminate(true);
-        progressBar.setPreferredSize(new Dimension(25, 25));
-        progressBar.setVisible(false);
-
-        discoverButton = new JButton(lang.get("toolbar.discover"));
-        discoverButton.setFont(MODERN_FONT);
-        discoverButton.setPreferredSize(new Dimension(BUTTON_WIDTH, BUTTON_HEIGHT));
-        discoverButton.setFocusPainted(false);
-        discoverButton.addActionListener(e -> handleDiscoverClicked());
-
-        rightPanel.add(progressBar);
-        rightPanel.add(discoverButton);
-
-        toolbar.add(leftPanel, BorderLayout.WEST);
-        toolbar.add(rightPanel, BorderLayout.EAST);
-
-        add(toolbar, BorderLayout.NORTH);
-    }
-
-    /**
-     * Creates the center panel with the table.
-     */
-    private void createCenterPanel() {
-        JPanel centerPanel = new JPanel(new BorderLayout(0, 10));
-        centerPanel.setBorder(new EmptyBorder(15, 15, 15, 15));
-
-        // Status bar at the top
-        JPanel statusBar = new JPanel(new BorderLayout(15, 0));
-        statusBar.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createLineBorder(new Color(144, 202, 249), 1),
-                new EmptyBorder(8, 12, 8, 12)
-        ));
-        statusBar.setBackground(new Color(227, 242, 253));
-
-        if (statusLabel == null){
-            statusLabel = new JLabel(lang.get("status.ready"));
-            statusLabel.setFont(MODERN_FONT);
-            statusLabel.setForeground(new Color(25, 118, 210));
-        }
-
-        deviceCountLabel = new JLabel(lang.get("table.devices_found", 0));
-        deviceCountLabel.setFont(MODERN_FONT);
-        deviceCountLabel.setForeground(new Color(25, 118, 210));
-
-        statusBar.add(statusLabel, BorderLayout.WEST);
-        statusBar.add(deviceCountLabel, BorderLayout.EAST);
-
-        // Devices table with protocol checkbox columns
-        String[] columns = {
-                lang.get("table.security_lock"),
-                lang.get("table.device_name"),
-                lang.get("table.mac"),
-                lang.get("table.firmware"),
-                lang.get("table.ipv4"),
-                lang.get("table.netmask"),
-                lang.get("table.gateway"),
-                lang.get("table.description"),
-                lang.get("table.location"),
-                lang.get("table.uptime"),
-                "Telnet",
-                "SSH",
-                "HTTP",
-                "HTTPS"
-        };
-
-        tableModel = new DefaultTableModel(columns, 0) {
-            @Override
-            public Class<?> getColumnClass(int columnIndex) {
-                if (columnIndex == 0) { // Column 0 is the lock icon (Integer)
-                    return Integer.class;
-                }
-                if (columnIndex >= 10 && columnIndex <= 13) { // Columns 10, 11, 12, 13 are checkboxes
-                    return Boolean.class;
-                }
-                return String.class;
-            }
-
-            @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
-        };
-        devicesTable = new JTable(tableModel) {
-            @Override
-            public Component prepareRenderer(TableCellRenderer renderer, int row, int column) {
-                Component c = super.prepareRenderer(renderer, row, column);
-
-                if (!c.getBackground().equals(getSelectionBackground())) {
-                    c.setBackground((row % 2 == 0 ? ALTERNATE_TABLE_COLOR : Color.WHITE)); // Alternate row colors (skip for lock icon column)
-                }
-
-                if (c instanceof JCheckBox checkbox) {
-                    checkbox.setEnabled(false); // Make checkboxes non-clickable
-                }
-                return c;
-            }
-        };
-
-        devicesTable.setFont(TABLE_FONT);
-        devicesTable.setRowHeight(30);
-        devicesTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
-        devicesTable.getTableHeader().setReorderingAllowed(true);
-
-        // Show grid borders
-        devicesTable.setShowGrid(true);
-        devicesTable.setGridColor(new Color(220, 220, 220));
-        devicesTable.setIntercellSpacing(new Dimension(1, 1));
-
-        // Enable column sorting
-        TableRowSorter<DefaultTableModel> tableSorter = new TableRowSorter<>(tableModel);
-        devicesTable.setRowSorter(tableSorter);
-
-        // Center text in cells
-        DefaultTableCellRenderer centerRenderer = new DefaultTableCellRenderer();
-        centerRenderer.setHorizontalAlignment(SwingConstants.CENTER);
-        centerRenderer.setFont(TABLE_FONT);
-
-        // Apply centered renderer to all columns except checkbox columns
-        for (int i = 0; i < devicesTable.getColumnCount(); i++) {
-            if (i < 10) {
-                devicesTable.getColumnModel().getColumn(i).setCellRenderer(centerRenderer);
-            }
-        }
-        // Header style
-        JTableHeader header = devicesTable.getTableHeader();
-        header.setFont(TABLE_FONT);
-        header.setBackground(new Color(245, 245, 245));
-        header.setForeground(new Color(60, 60, 60));
-
-        // Set column widths
-        devicesTable.getColumnModel().getColumn(0).setPreferredWidth(100); // Lock icon
-        devicesTable.getColumnModel().getColumn(1).setPreferredWidth(160); // Device Name
-        devicesTable.getColumnModel().getColumn(2).setPreferredWidth(140); // MAC
-        devicesTable.getColumnModel().getColumn(3).setPreferredWidth(120); // Firmware
-        devicesTable.getColumnModel().getColumn(4).setPreferredWidth(120); // IPv4
-        devicesTable.getColumnModel().getColumn(5).setPreferredWidth(120); // Netmask
-        devicesTable.getColumnModel().getColumn(6).setPreferredWidth(120); // Gateway
-        devicesTable.getColumnModel().getColumn(7).setPreferredWidth(200); // Description
-        devicesTable.getColumnModel().getColumn(8).setPreferredWidth(150); // Location
-        devicesTable.getColumnModel().getColumn(9).setPreferredWidth(180); // Uptime
-        devicesTable.getColumnModel().getColumn(10).setPreferredWidth(70); // Telnet
-        devicesTable.getColumnModel().getColumn(11).setPreferredWidth(70); // SSH
-        devicesTable.getColumnModel().getColumn(12).setPreferredWidth(70); // HTTP
-        devicesTable.getColumnModel().getColumn(13).setPreferredWidth(70); // HTTPS
-
-        // Set renderer for the lock icon column
-        devicesTable.getColumnModel().getColumn(0).setCellRenderer(new LockIconRenderer());
-
-
-        // Enable/disable buttons based on selection
-        devicesTable.getSelectionModel().addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting()) {
-                updateButtonStates();
-            }
-        });
-
-        JScrollPane scrollPane = new JScrollPane(devicesTable);
-        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(200, 200, 200)));
-
-        centerPanel.add(statusBar, BorderLayout.NORTH);
-        centerPanel.add(scrollPane, BorderLayout.CENTER);
-
-        add(centerPanel, BorderLayout.CENTER);
-    }
-
-    /**
-     * Creates the bottom panel with action buttons.
-     */
-    private void createBottomPanel() {
-        JPanel bottomPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 12));
-        bottomPanel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(224, 224, 224)));
-
-        updateDeviceBtn = new JButton(lang.get("button.update_device"));
-        updateMultiBtn = new JButton(lang.get("button.update_multi"));
-        updateAllBtn = new JButton(lang.get("button.update_all"));
-        connectBtn = new JButton(lang.get("button.connect"));
-
-        // Style and configuration of buttons
-        JButton[] buttons = {updateDeviceBtn, updateMultiBtn, updateAllBtn, connectBtn};
-        for (JButton btn : buttons) {
-            btn.setFont(MODERN_FONT);
-            btn.setPreferredSize(new Dimension(BUTTON_WIDTH, BUTTON_HEIGHT));
-            btn.setFocusPainted(false);
-            btn.setEnabled(false);
-        }
-
-        // Button actions
-        updateDeviceBtn.addActionListener(e -> handleUpdateDevice());
-        updateMultiBtn.addActionListener(e -> handleUpdateMulti());
-        updateAllBtn.addActionListener(e -> handleUpdateAll());
-        connectBtn.addActionListener(e -> handleConnectToDevice());
-
-        bottomPanel.add(updateDeviceBtn);
-        bottomPanel.add(updateMultiBtn);
-        bottomPanel.add(updateAllBtn);
-        bottomPanel.add(connectBtn);
-
-        add(bottomPanel, BorderLayout.SOUTH);
-    }
-
-    /**
-     * Loads the adapters into the ComboBox.
-     * @param adapters all the network interfaces found that will be displayed.
+     * Loads network adapters into the combo box.
+     * <p>
+     * Only adapters that are valid for scanning (up, non-loopback, with valid IP)
+     * are added to the combo box.
+     * </p>
+     *
+     * @param adapters the list of network adapters to display
      */
     public void loadNetworkInterfaceCustoms(List<NetworkInterfaceCustom> adapters) {
         this.availableAdapters = new ArrayList<>(adapters);
         adapterComboBox.removeAllItems();
+
         for (NetworkInterfaceCustom adapter : adapters) {
             if (adapter.isValidForScanning()) {
                 adapterComboBox.addItem(adapter);
             }
         }
+
         if (adapterComboBox.getItemCount() > 0) {
             adapterComboBox.setSelectedIndex(0);
         }
     }
 
     /**
-     * Shows all the PLANET devices found after a discovery.
+     * Displays discovered devices on the table.
+     *
+     * @param devices the list of discovered devices
      */
     public void displayDevices(List<PlanetSwitchDevice> devices) {
         this.discoveredDevices = new ArrayList<>(devices);
         tableModel.setRowCount(0);
+
         for (PlanetSwitchDevice device : devices) {
-            JCheckBox telnetCB = new JCheckBox();
-            JCheckBox sshCB = new JCheckBox();
-            JCheckBox httpCB = new JCheckBox();
-            JCheckBox httpsCB = new JCheckBox();
-
-            Map<String, JCheckBox> checkboxMap = new HashMap<>();
-            checkboxMap.put("telnet", telnetCB);
-            checkboxMap.put("ssh", sshCB);
-            checkboxMap.put("http", httpCB);
-            checkboxMap.put("https", httpsCB);
-            deviceCheckboxes.put(device.getMacAddress(), checkboxMap);
-
-            tableModel.addRow(new Object[]{
-                    LockIconRenderer.LOCK_UNKNOWN, // Lock status (gray by default)
-                    device.getDeviceName(),
-                    device.getMacAddress(),
-                    device.getVersion(),
-                    device.getIpAddress(),
-                    device.getNetMask(),
-                    device.getGateway(),
-                    device.getDescription(),
-                    translateValue(device.getSystemLocation()),
-                    translateValue(device.getSystemUptime()),
-                    false,
-                    false,
-                    false,
-                    false
-            });
+            addDeviceToTable(device);
         }
+
         updateDeviceCount();
         updateButtonStates();
     }
 
     /**
-     * Translates special values like "Timeout", "Error", "DUPLICATE" to current language.
+     * Adds or updates a device in the table.
+     * <p>
+     * If the device already exists (by MAC address), the row is updated.
+     * Otherwise, a new row is added.
+     * </p>
      *
-     * @param value the original value from a device
-     * @return the translated value
+     * @param device the device to add or update
      */
-    private String translateValue(String value) {
-        if (value == null || value.isEmpty()) {
-            return lang.get("table.na");
+    public void addOrUpdateDevice(PlanetSwitchDevice device) {
+        int existingRow = findDeviceRowByMac(device.getMacAddress());
+
+        if (existingRow >= 0) {
+            updateDeviceRow(existingRow, device);
+        } else {
+            addDeviceRow(device);
         }
-
-        // Normalize the value (case-insensitive comparison)
-        String normalizedValue = value.trim().toUpperCase();
-
-        return switch (normalizedValue) {
-            case "TIMEOUT" -> lang.get("table.timeout");
-            case "ERROR" -> lang.get("table.error");
-            case "N/A", "N/D" -> lang.get("table.na");
-            case "SNMP NOT AVAILABLE" -> lang.get("table.snmp_not_available");
-            case "LOADING..." -> lang.get("table.loading");
-            case "DUPLICATE", "DUPLICATES", "DOUBLON", "DOUBLONS" -> lang.get("table.duplicate");
-            default -> value;  // Return original value if not a special keyword
-        };
     }
 
     /**
-     * Update the status message in the header.
-     * @param message the message you want to print has to be a String.
+     * Updates the status message in the status bar.
+     *
+     * @param message the message to display
      */
     public void setStatusMessage(String message) {
         statusLabel.setText(message);
     }
 
     /**
-     * Enable/Disable scanning mode : disabling buttons etc ...
+     * Enables or disables scanning mode.
+     * <p>
+     * In scanning mode, the discovery button is disabled and the progress
+     * bar is visible.
+     * </p>
+     *
+     * @param scanning true to enable scanning mode, false to disable
      */
     public void setScanningMode(boolean scanning) {
         discoverButton.setEnabled(!scanning);
@@ -607,25 +302,17 @@ public class MainWindow extends JFrame {
     }
 
     /**
-     * Updates protocol checkbox for a specific device.
+     * Updates the protocol status checkbox for a device.
      *
      * @param macAddress the device MAC address
-     * @param protocol the protocol ("telnet", "ssh", "http", "https")
-     * @param isAvailable true if protocol is available
-     * @implNote need to call the protocols tests before using this method
-     * @see com.rover.services.ProtocolTestService
+     * @param protocol the protocol name ("telnet", "ssh", "http", "https")
+     * @param isAvailable true if the protocol is available
      */
     public void setProtocolStatus(String macAddress, String protocol, boolean isAvailable) {
         int row = findDeviceRowByMac(macAddress);
 
         if (row >= 0) {
-            int columnIndex = switch (protocol.toLowerCase()) {
-                case "telnet" -> 10;
-                case "ssh" -> 11;
-                case "http" -> 12;
-                case "https" -> 13;
-                default -> -1;
-            };
+            int columnIndex = getProtocolColumnIndex(protocol);
 
             if (columnIndex >= 0) {
                 tableModel.setValueAt(isAvailable, row, columnIndex);
@@ -638,68 +325,35 @@ public class MainWindow extends JFrame {
     }
 
     /**
-     * Restores protocol checkbox status from the cache after UI refresh.
+     * Updates the security lock icon for a device.
+     *
+     * @param macAddress the device MAC address
+     * @param status the security status (LOCK_UNKNOWN, LOCK_SECURE, LOCK_INSECURE)
      */
-    private void restoreProtocolStatus() {
-        protocolStatusCache.forEach((macAddress, protocols) -> protocols.forEach((protocol, status) -> {
-            int row = findDeviceRowByMac(macAddress);
+    public void setSecurityStatus(String macAddress, int status) {
+        int row = findDeviceRowByMac(macAddress);
 
-            if (row >= 0) {
-                int columnIndex = switch (protocol) {
-                    case "telnet" -> 10;
-                    case "ssh" -> 11;
-                    case "http" -> 12;
-                    case "https" -> 13;
-                    default -> -1;
-                };
-
-                if (columnIndex >= 0) {
-                    tableModel.setValueAt(status, row, columnIndex);
-                }
-            }
-        }));
-
-        // Restore security status
-        securityStatusCache.forEach((macAddress, status) -> {
-            int row = findDeviceRowByMac(macAddress);
-            if (row >= 0) {
-                tableModel.setValueAt(status, row, 0);
-            }
-        });
-
-        logger.debug("Restored protocol status for {} devices", protocolStatusCache.size());
+        if (row >= 0) {
+            tableModel.setValueAt(status, row, COL_LOCK);
+            securityStatusCache.put(macAddress, status);
+            logger.debug("Set security status to {} for device {}", status, macAddress);
+        }
     }
 
     /**
-     * Prints an error message.
-     * @param title the error in a simplified way.
-     * @param message contains the error message. must be clear and understandable = must allow the problem/source to be identified quickly.
+     * Sets the discovery completion state for status preservation during language changes.
+     *
+     * @param deviceCount the number of devices discovered
+     * @param duplicateMacs comma-separated MAC addresses of duplicate devices
      */
-    public void showError(String title, String message) {
-        JOptionPane.showMessageDialog(
-                this,
-                message,
-                title,
-                JOptionPane.ERROR_MESSAGE
-        );
+    public void setDiscoveryState(int deviceCount, String duplicateMacs) {
+        this.lastDiscoveredCount = deviceCount;
+        this.lastDuplicateMacs = duplicateMacs;
+        logger.debug("Discovery state saved: {} devices, duplicates: {}", deviceCount, duplicateMacs);
     }
 
     /**
-     * Displays any informational message.
-     * @param title The title of the message, in plain text.
-     * @param message The body of the informational message, which must be clear and understandable (no error logs, etc.).
-     */
-    public void showInfo(String title, String message) {
-        JOptionPane.showMessageDialog(
-                this,
-                message,
-                title,
-                JOptionPane.INFORMATION_MESSAGE
-        );
-    }
-
-    /**
-     * Clears the results from the table.
+     * Clears all results from the table.
      */
     public void clearResults() {
         discoveredDevices.clear();
@@ -713,17 +367,7 @@ public class MainWindow extends JFrame {
     }
 
     /**
-     * Clears the discovery state.
-     */
-    public void clearDiscoveryState() {
-        this.lastDiscoveredCount = 0;
-        this.lastDuplicateMACs = "";
-        this.discoveryCompleted = false;
-        logger.debug("Discovery state cleared");
-    }
-
-    /**
-     * Clears the combo box of adapters
+     * Clears the adapter combo box.
      */
     public void clearAdapters() {
         availableAdapters.clear();
@@ -731,171 +375,23 @@ public class MainWindow extends JFrame {
     }
 
     /**
-     * Handles the refresh adapters button click.
-     * Requests the controller to reload network adapters.
+     * Displays an error dialog.
+     *
+     * @param title the dialog title
+     * @param message the error message
      */
-    private void handleRefreshAdapters() {
-        logger.info("Refresh adapters clicked");
-        refreshNetIntsButton.setEnabled(false); // Disable the button temporarily
-        if (eventListener != null) {
-            NetworkInterfaceCustom currentSelection = (NetworkInterfaceCustom) adapterComboBox.getSelectedItem();
-            eventListener.onRefreshAdaptersClicked();
-            if (currentSelection != null) { // Restore selection
-                for (int i = 0; i < adapterComboBox.getItemCount(); i++) {
-                    if (adapterComboBox.getItemAt(i).equals(currentSelection)) {
-                        adapterComboBox.setSelectedIndex(i);
-                        break;
-                    }
-                }
-            }
-        }
-        SwingUtilities.invokeLater(() -> refreshNetIntsButton.setEnabled(true)); // Re-enable button after refresh
-    }
-
-    private void handleDiscoverClicked() {
-        NetworkInterfaceCustom selectedAdapter = (NetworkInterfaceCustom) adapterComboBox.getSelectedItem();
-        if (selectedAdapter == null) {
-            showError(
-                    lang.get("error.no_adapter_title"),
-                    lang.get("error.no_adapter_message")
-            );
-            return;
-        }
-        if (eventListener != null) {
-            eventListener.onDiscoverClicked(selectedAdapter);
-        }
+    public void showError(String title, String message) {
+        JOptionPane.showMessageDialog(this, message, title, JOptionPane.ERROR_MESSAGE);
     }
 
     /**
-     * Manages interaction with the “Update Device” button.
+     * Displays an information dialog.
+     *
+     * @param title the dialog title
+     * @param message the information message
      */
-    private void handleUpdateDevice() {
-        int selectedRow = devicesTable.getSelectedRow();
-        if (selectedRow >= 0 && selectedRow < discoveredDevices.size()) {
-            PlanetSwitchDevice device = discoveredDevices.get(selectedRow);
-            if (eventListener != null) {
-                eventListener.onUpdateDeviceClicked(device);
-            }
-        }
-    }
-
-    /**
-     * Manages interaction with the “Update Multi” button.
-     */
-    private void handleUpdateMulti() {
-        List<PlanetSwitchDevice> selectedDevices = getSelectedDevices();
-        if (!selectedDevices.isEmpty() && eventListener != null) {
-            eventListener.onUpdateMultiClicked(selectedDevices);
-        }
-    }
-
-    /**
-     * Manages interaction with the “Update All” button.
-     */
-    private void handleUpdateAll() {
-        if (!discoveredDevices.isEmpty() && eventListener != null) {
-            eventListener.onUpdateAllClicked(new ArrayList<>(discoveredDevices));
-        }
-    }
-
-    /**
-     * Manages interaction with the “Connect to Device” button.
-     */
-    private void handleConnectToDevice() {
-        int selectedRow = devicesTable.getSelectedRow();
-        if (selectedRow >= 0 && selectedRow < discoveredDevices.size()) {
-            PlanetSwitchDevice device = discoveredDevices.get(selectedRow);
-            if (eventListener != null) {
-                eventListener.onConnectToDeviceClicked(device);
-            }
-        }
-    }
-
-    /**
-     * Detects and redirects the export of found data to a CSV file.
-     */
-    private void handleExport() {
-        if (discoveredDevices.isEmpty()) {
-            showInfo(
-                    lang.get("info.no_data_title"),
-                    lang.get("info.no_data_message")
-            );
-            return;
-        }
-
-        if (eventListener != null) {
-            eventListener.onExportClicked(new ArrayList<>(discoveredDevices));
-        }
-    }
-
-    /**
-     * Trigger method that cleans up the array containing information about the switches found.
-     */
-    private void handleClearResults() {
-        if (eventListener != null) {
-            eventListener.onClearResultsClicked();
-        } else {
-            clearResults();
-        }
-    }
-
-    /**
-     * Changes the application language and refreshes the UI.
-     * @param languageCode the ISO 639-1 language code ("en" or "fr")
-     */
-    private void changeLanguage(String languageCode) {
-        logger.info("Changing language to : {}", languageCode);
-        lang.setLanguage(languageCode); // Change language
-        refreshUI(); // Refresh the UI
-        logger.info("Language changed successfully to : {}", languageCode);
-    }
-
-    private void refreshUI() {
-
-        NetworkInterfaceCustom selectedAdapter = (NetworkInterfaceCustom) adapterComboBox.getSelectedItem();
-        List<PlanetSwitchDevice> currentDevices = new ArrayList<>(discoveredDevices);
-
-        int currentDiscoveredCount = lastDiscoveredCount;
-        String currentDuplicateMACs = lastDuplicateMACs;
-
-        getContentPane().removeAll();
-
-        // Recreate all components
-        createMenuBar();
-        createToolbar();
-        createCenterPanel();
-        createBottomPanel();
-
-        // Restore state
-        loadNetworkInterfaceCustoms(availableAdapters);
-        if (selectedAdapter != null) {
-            adapterComboBox.setSelectedItem(selectedAdapter);
-        }
-
-        displayDevices(currentDevices); // Shows the devices found
-
-        restoreProtocolStatus(); // Restore the checkboxs
-
-        if (appState.equals(APP_STATE.FINAL_STATE)) {
-            if (currentDiscoveredCount == 0) {
-                statusLabel.setText(lang.get("status.completed_none"));
-            } else {
-                String statusMsg = lang.get("status.completed_found", currentDiscoveredCount);
-                if (!currentDuplicateMACs.isEmpty()) {
-                    statusMsg += " " + lang.get("error.duplicate_message", currentDuplicateMACs);
-                }
-                statusLabel.setText(statusMsg);
-            }
-        } else if (appState.equals(APP_STATE.ADAPTERS_FOUND)) {
-            statusLabel.setText(lang.get("status.ready_adapters", availableAdapters.size()));
-        }
-
-        // Update title
-        setTitle(lang.get("window.title"));
-
-        // Refresh display
-        revalidate();
-        repaint();
+    public void showInfo(String title, String message) {
+        JOptionPane.showMessageDialog(this, message, title, JOptionPane.INFORMATION_MESSAGE);
     }
 
     /**
@@ -915,53 +411,693 @@ public class MainWindow extends JFrame {
     }
 
     /**
-     * Sets the discovery completion state for status preservation during language changes.
-     *
-     * @param deviceCount number of devices discovered
-     * @param duplicateMACs comma-separated MAC addresses of duplicate devices
+     * Initializes fonts for all UI components.
      */
-    public void setDiscoveryState(int deviceCount, String duplicateMACs) {
-        this.lastDiscoveredCount = deviceCount;
-        this.lastDuplicateMACs = duplicateMACs;
-        this.discoveryCompleted = true;
-        logger.debug("Discovery state saved: {} devices, duplicates: {}", deviceCount, duplicateMACs);
+    private void initializeFonts() {
+        UIManager.put("Button.font", FONT_MODERN);
+        UIManager.put("Label.font", FONT_MODERN);
+        UIManager.put("ComboBox.font", FONT_MODERN);
+        UIManager.put("Table.font", FONT_TABLE);
+        UIManager.put("TableHeader.font", FONT_TABLE);
+        UIManager.put("Menu.font", FONT_MODERN);
+        UIManager.put("MenuItem.font", FONT_MODERN);
+        UIManager.put("CheckBoxMenuItem.font", FONT_MODERN);
     }
 
     /**
-     * Retrieves data from the selected columns.
-     * @return List of objects from the selected rows.
+     * Initializes the main window frame properties.
      */
-    private List<PlanetSwitchDevice> getSelectedDevices() {
-        List<PlanetSwitchDevice> selected = new ArrayList<>();
-        for (int row : devicesTable.getSelectedRows()) {
-            if (row >= 0 && row < discoveredDevices.size()) {
-                selected.add(discoveredDevices.get(devicesTable.convertRowIndexToModel(row)));
+    private void initializeFrame() {
+        setTitle(lang.get("window.title"));
+        setSize(PreferencesManager.getWindowWidth(DEFAULT_WINDOW_WIDTH),
+                PreferencesManager.getWindowHeight(DEFAULT_WINDOW_HEIGHT));
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLayout(new BorderLayout());
+    }
+
+    /**
+     * Sets up the window close listener to save state.
+     */
+    private void setupWindowListener() {
+        addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowClosing(java.awt.event.WindowEvent windowEvent) {
+                saveWindowState();
+            }
+        });
+    }
+
+    /**
+     * Saves the current window size to preferences.
+     */
+    private void saveWindowState() {
+        PreferencesManager.saveWindowSize(getWidth(), getHeight());
+        logger.info("Window state saved: {}x{}", getWidth(), getHeight());
+    }
+
+    /**
+     * Restores the saved window size from preferences.
+     */
+    private void restoreWindowState() {
+        int width = PreferencesManager.getWindowWidth(DEFAULT_WINDOW_WIDTH);
+        int height = PreferencesManager.getWindowHeight(DEFAULT_WINDOW_HEIGHT);
+        setSize(width, height);
+        logger.info("Window state restored: {}x{}", width, height);
+    }
+
+    /**
+     * Creates the menu bar with all menus.
+     */
+    private void createMenuBar() {
+        JMenuBar menuBar = new JMenuBar();
+
+        menuBar.add(createFileMenu());
+        menuBar.add(createEditMenu());
+        menuBar.add(createViewMenu());
+        menuBar.add(createHelpMenu());
+
+        setJMenuBar(menuBar);
+    }
+
+    /**
+     * Creates the File menu.
+     */
+    private JMenu createFileMenu() {
+        JMenu fileMenu = new JMenu(lang.get("menu.file"));
+
+        JMenuItem exportItem = new JMenuItem(lang.get("menu.export"));
+        exportItem.addActionListener(e -> handleExport());
+
+        JMenuItem quitItem = new JMenuItem(lang.get("menu.quit"));
+        quitItem.addActionListener(e -> {
+            saveWindowState();
+            System.exit(0);
+        });
+
+        fileMenu.add(exportItem);
+        fileMenu.addSeparator();
+        fileMenu.add(quitItem);
+
+        return fileMenu;
+    }
+
+    /**
+     * Creates the Edit menu with preferences and language submenu.
+     */
+    private JMenu createEditMenu() {
+        JMenu editMenu = new JMenu(lang.get("menu.edit"));
+
+        JMenuItem preferencesItem = new JMenuItem(lang.get("menu.preferences"));
+        preferencesItem.addActionListener(e -> showPreferences());
+
+        JMenuItem clearItem = new JMenuItem(lang.get("menu.clear"));
+        clearItem.addActionListener(e -> handleClearResults());
+
+        editMenu.add(preferencesItem);
+        editMenu.add(clearItem);
+        editMenu.addSeparator();
+        editMenu.add(createLanguageMenu());
+
+        return editMenu;
+    }
+
+    /**
+     * Creates the language submenu.
+     */
+    private JMenu createLanguageMenu() {
+        JMenu languageMenu = new JMenu(lang.get("menu.language"));
+
+        JMenuItem englishItem = new JMenuItem("English");
+        englishItem.addActionListener(e -> changeLanguage("en"));
+
+        JMenuItem frenchItem = new JMenuItem("Français");
+        frenchItem.addActionListener(e -> changeLanguage("fr"));
+
+        languageMenu.add(englishItem);
+        languageMenu.add(frenchItem);
+
+        return languageMenu;
+    }
+
+    /**
+     * Creates the View menu.
+     */
+    private JMenu createViewMenu() {
+        JMenu viewMenu = new JMenu(lang.get("menu.view"));
+
+        JCheckBoxMenuItem detailsItem = new JCheckBoxMenuItem(lang.get("menu.show_details"), true);
+        viewMenu.add(detailsItem);
+
+        return viewMenu;
+    }
+
+    /**
+     * Creates the Help menu.
+     */
+    private JMenu createHelpMenu() {
+        JMenu helpMenu = new JMenu(lang.get("menu.help"));
+
+        JMenuItem docItem = new JMenuItem(lang.get("menu.documentation"));
+        docItem.addActionListener(e -> showDocumentation());
+
+        JMenuItem aboutItem = new JMenuItem(lang.get("menu.about"));
+        aboutItem.addActionListener(e -> showAbout());
+
+        helpMenu.add(docItem);
+        helpMenu.add(aboutItem);
+
+        return helpMenu;
+    }
+
+    /**
+     * Creates the toolbar with adapter selection and discover button.
+     */
+    private void createToolbar() {
+        JPanel toolbar = new JPanel(new BorderLayout());
+        toolbar.setBorder(new EmptyBorder(12, 15, 12, 15));
+
+        toolbar.add(createToolbarLeftPanel(), BorderLayout.WEST);
+        toolbar.add(createToolbarRightPanel(), BorderLayout.EAST);
+
+        add(toolbar, BorderLayout.NORTH);
+    }
+
+    /**
+     * Creates the left panel of the toolbar (adapter selection).
+     */
+    private JPanel createToolbarLeftPanel() {
+        JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+
+        JLabel adapterLabel = new JLabel(lang.get("toolbar.network_interface"));
+        adapterLabel.setFont(FONT_MODERN);
+
+        adapterComboBox = createAdapterComboBox();
+
+        refreshAdaptersButton = createRefreshButton();
+
+        leftPanel.add(adapterLabel);
+        leftPanel.add(adapterComboBox);
+        leftPanel.add(refreshAdaptersButton);
+
+        return leftPanel;
+    }
+
+    /**
+     * Creates the adapter combo box with a custom renderer.
+     */
+    private JComboBox<NetworkInterfaceCustom> createAdapterComboBox() {
+        JComboBox<NetworkInterfaceCustom> comboBox = new JComboBox<>();
+        comboBox.setFont(FONT_MODERN);
+        comboBox.setPreferredSize(new Dimension(COMBO_BOX_WIDTH, COMBO_BOX_HEIGHT));
+        comboBox.setToolTipText(lang.get("toolbar.network_interface"));
+
+        comboBox.setRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value,
+                                                          int index, boolean isSelected, boolean cellHasFocus) {
+                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                setFont(FONT_MODERN);
+                if (value instanceof NetworkInterfaceCustom adapter) {
+                    setText(adapter.toDisplayString());
+                }
+                return this;
+            }
+        });
+
+        return comboBox;
+    }
+
+    /**
+     * Creates the refresh adapters button.
+     */
+    private JButton createRefreshButton() {
+        JButton button = new JButton(lang.get("toolbar.refresh_adapters"));
+        button.setPreferredSize(new Dimension(BUTTON_WIDTH, BUTTON_HEIGHT));
+        button.setFont(FONT_MODERN);
+        button.setFocusPainted(false);
+        button.setToolTipText(lang.get("toolbar.refresh_adapters_tip"));
+        button.addActionListener(e -> handleRefreshAdapters());
+        return button;
+    }
+
+    /**
+     * Creates the right panel of the toolbar (progress bar and discover button).
+     */
+    private JPanel createToolbarRightPanel() {
+        JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+
+        progressBar = new JProgressBar();
+        progressBar.setIndeterminate(true);
+        progressBar.setPreferredSize(new Dimension(25, 25));
+        progressBar.setVisible(false);
+
+        discoverButton = new JButton(lang.get("toolbar.discover"));
+        discoverButton.setFont(FONT_MODERN);
+        discoverButton.setPreferredSize(new Dimension(BUTTON_WIDTH, BUTTON_HEIGHT));
+        discoverButton.setFocusPainted(false);
+        discoverButton.addActionListener(e -> handleDiscoverClicked());
+
+        rightPanel.add(progressBar);
+        rightPanel.add(discoverButton);
+
+        return rightPanel;
+    }
+
+    /**
+     * Creates the center panel with a status bar and device table.
+     */
+    private void createCenterPanel() {
+        JPanel centerPanel = new JPanel(new BorderLayout(0, 10));
+        centerPanel.setBorder(new EmptyBorder(15, 15, 15, 15));
+
+        centerPanel.add(createStatusBar(), BorderLayout.NORTH);
+        centerPanel.add(createTableScrollPane(), BorderLayout.CENTER);
+
+        add(centerPanel, BorderLayout.CENTER);
+    }
+
+    /**
+     * Creates the status bar at the top of the center panel.
+     */
+    private JPanel createStatusBar() {
+        JPanel statusBar = new JPanel(new BorderLayout(15, 0));
+        statusBar.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(COLOR_STATUS_BORDER, 1),
+                new EmptyBorder(8, 12, 8, 12)
+        ));
+        statusBar.setBackground(COLOR_STATUS_BACKGROUND);
+
+        if (statusLabel == null) {
+            statusLabel = new JLabel(lang.get("status.ready"));
+            statusLabel.setFont(FONT_MODERN);
+            statusLabel.setForeground(COLOR_STATUS_TEXT);
+        }
+
+        deviceCountLabel = new JLabel(lang.get("table.devices_found", 0));
+        deviceCountLabel.setFont(FONT_MODERN);
+        deviceCountLabel.setForeground(COLOR_STATUS_TEXT);
+
+        statusBar.add(statusLabel, BorderLayout.WEST);
+        statusBar.add(deviceCountLabel, BorderLayout.EAST);
+
+        return statusBar;
+    }
+
+    /**
+     * Creates the scroll pane containing the device table.
+     */
+    private JScrollPane createTableScrollPane() {
+        createDevicesTable();
+
+        JScrollPane scrollPane = new JScrollPane(devicesTable);
+        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(200, 200, 200)));
+
+        return scrollPane;
+    }
+
+    /**
+     * Creates and configures the devices table.
+     */
+    private void createDevicesTable() {
+        String[] columns = getTableColumns();
+
+        tableModel = createTableModel(columns);
+        devicesTable = new JTable(tableModel) {
+            @Override
+            public Component prepareRenderer(TableCellRenderer renderer, int row, int column) {
+                Component c = super.prepareRenderer(renderer, row, column);
+
+                if (!c.getBackground().equals(getSelectionBackground())) {
+                    c.setBackground(row % 2 == 0 ? COLOR_ALTERNATE_ROW : Color.WHITE);
+                }
+
+                if (c instanceof JCheckBox checkbox) {
+                    checkbox.setEnabled(false);
+                }
+
+                return c;
+            }
+        };
+
+        configureTable();
+        configureTableColumns();
+    }
+
+    /**
+     * Returns the column names for the table.
+     */
+    private String[] getTableColumns() {
+        return new String[]{
+                lang.get("table.security_lock"),
+                lang.get("table.device_name"),
+                lang.get("table.mac"),
+                lang.get("table.firmware"),
+                lang.get("table.ipv4"),
+                lang.get("table.netmask"),
+                lang.get("table.gateway"),
+                lang.get("table.description"),
+                lang.get("table.location"),
+                lang.get("table.uptime"),
+                "Telnet",
+                "SSH",
+                "HTTP",
+                "HTTPS"
+        };
+    }
+
+    /**
+     * Creates the table model with custom column classes.
+     */
+    private DefaultTableModel createTableModel(String[] columns) {
+        return new DefaultTableModel(columns, 0) {
+            @Override
+            public Class<?> getColumnClass(int columnIndex) {
+                if (columnIndex == COL_LOCK) {
+                    return Integer.class;
+                }
+                if (columnIndex >= COL_TELNET && columnIndex <= COL_HTTPS) {
+                    return Boolean.class;
+                }
+                return String.class;
+            }
+
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+        };
+    }
+
+    /**
+     * Configures the table properties.
+     */
+    private void configureTable() {
+        devicesTable.setFont(FONT_TABLE);
+        devicesTable.setRowHeight(30);
+        devicesTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
+        devicesTable.getTableHeader().setReorderingAllowed(true);
+        devicesTable.setShowGrid(true);
+        devicesTable.setGridColor(COLOR_TABLE_GRID);
+        devicesTable.setIntercellSpacing(new Dimension(1, 1));
+
+        TableRowSorter<DefaultTableModel> tableSorter = new TableRowSorter<>(tableModel);
+        devicesTable.setRowSorter(tableSorter);
+
+        devicesTable.getSelectionModel().addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) {
+                updateButtonStates();
+            }
+        });
+
+        JTableHeader header = devicesTable.getTableHeader();
+        header.setFont(FONT_TABLE);
+        header.setBackground(COLOR_HEADER_BACKGROUND);
+        header.setForeground(COLOR_HEADER_TEXT);
+    }
+
+    /**
+     * Configures table column widths and renderers.
+     */
+    private void configureTableColumns() {
+        DefaultTableCellRenderer centerRenderer = new DefaultTableCellRenderer();
+        centerRenderer.setHorizontalAlignment(SwingConstants.CENTER);
+        centerRenderer.setFont(FONT_TABLE);
+
+        for (int i = 0; i < devicesTable.getColumnCount(); i++) {
+            if (i < COL_TELNET) {
+                devicesTable.getColumnModel().getColumn(i).setCellRenderer(centerRenderer);
             }
         }
-        return selected;
+
+        devicesTable.getColumnModel().getColumn(COL_LOCK).setCellRenderer(new LockIconRenderer());
+
+        int[] columnWidths = {100, 160, 140, 120, 120, 120, 120, 200, 150, 180, 70, 70, 70, 70};
+        for (int i = 0; i < columnWidths.length; i++) {
+            devicesTable.getColumnModel().getColumn(i).setPreferredWidth(columnWidths[i]);
+        }
     }
 
     /**
-     * Adds a new device to the table or updates an existing one.
-     * <p>
-     * This method checks if the device already exists in the table (by MAC address).
-     * If it exists, the row is updated with new data (useful for SNMP enrichment).
-     * If it doesn't exist, a new row is added.
-     * </p>
-     *
-     * @param device the device to add or update
+     * Creates the bottom panel with action buttons.
      */
-    public void addOrUpdateDevice(PlanetSwitchDevice device) {
-        // Chercher si le device existe déjà (par MAC)
-        int existingRow = findDeviceRowByMac(device.getMacAddress());
+    private void createBottomPanel() {
+        JPanel bottomPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 12));
+        bottomPanel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(224, 224, 224)));
 
-        if (existingRow >= 0) {
-            // Mettre à jour la ligne existante
-            updateDeviceRow(existingRow, device);
-        } else {
-            // Ajouter une nouvelle ligne
-            addDeviceRow(device);
+        updateDeviceButton = createActionButton(lang.get("button.update_device"), e -> handleUpdateDevice());
+        updateMultiButton = createActionButton(lang.get("button.update_multi"), e -> handleUpdateMulti());
+        updateAllButton = createActionButton(lang.get("button.update_all"), e -> handleUpdateAll());
+        connectButton = createActionButton(lang.get("button.connect"), e -> handleConnectToDevice());
+
+        bottomPanel.add(updateDeviceButton);
+        bottomPanel.add(updateMultiButton);
+        bottomPanel.add(updateAllButton);
+        bottomPanel.add(connectButton);
+
+        add(bottomPanel, BorderLayout.SOUTH);
+    }
+
+    /**
+     * Creates a styled action button.
+     */
+    private JButton createActionButton(String text, java.awt.event.ActionListener listener) {
+        JButton button = new JButton(text);
+        button.setFont(FONT_MODERN);
+        button.setPreferredSize(new Dimension(BUTTON_WIDTH, BUTTON_HEIGHT));
+        button.setFocusPainted(false);
+        button.setEnabled(false);
+        button.addActionListener(listener);
+        return button;
+    }
+
+    /**
+     * Handles the refresh adapters button click.
+     */
+    private void handleRefreshAdapters() {
+        logger.info("Refresh adapters clicked");
+        refreshAdaptersButton.setEnabled(false);
+
+        if (eventListener != null) {
+            NetworkInterfaceCustom currentSelection = (NetworkInterfaceCustom) adapterComboBox.getSelectedItem();
+            eventListener.onRefreshAdaptersClicked();
+
+            if (currentSelection != null) {
+                restoreAdapterSelection(currentSelection);
+            }
         }
+
+        SwingUtilities.invokeLater(() -> refreshAdaptersButton.setEnabled(true));
+    }
+
+    /**
+     * Restores the adapter selection after refresh.
+     */
+    private void restoreAdapterSelection(NetworkInterfaceCustom previousSelection) {
+        for (int i = 0; i < adapterComboBox.getItemCount(); i++) {
+            if (adapterComboBox.getItemAt(i).equals(previousSelection)) {
+                adapterComboBox.setSelectedIndex(i);
+                break;
+            }
+        }
+    }
+
+    /**
+     * Handles the discovery button click.
+     */
+    private void handleDiscoverClicked() {
+        NetworkInterfaceCustom selectedAdapter = (NetworkInterfaceCustom) adapterComboBox.getSelectedItem();
+
+        if (selectedAdapter == null) {
+            showError(lang.get("error.no_adapter_title"), lang.get("error.no_adapter_message"));
+            return;
+        }
+
+        if (eventListener != null) {
+            eventListener.onDiscoverClicked(selectedAdapter);
+        }
+    }
+
+    /**
+     * Handles the update device button click.
+     */
+    private void handleUpdateDevice() {
+        int selectedRow = devicesTable.getSelectedRow();
+
+        if (selectedRow >= 0 && selectedRow < discoveredDevices.size()) {
+            PlanetSwitchDevice device = discoveredDevices.get(devicesTable.convertRowIndexToModel(selectedRow));
+            if (eventListener != null) {
+                eventListener.onUpdateDeviceClicked(device);
+            }
+        }
+    }
+
+    /**
+     * Handles the update multi button click.
+     */
+    private void handleUpdateMulti() {
+        List<PlanetSwitchDevice> selectedDevices = getSelectedDevices();
+
+        if (!selectedDevices.isEmpty() && eventListener != null) {
+            eventListener.onUpdateMultiClicked(selectedDevices);
+        }
+    }
+
+    /**
+     * Handles the update all button click.
+     */
+    private void handleUpdateAll() {
+        if (!discoveredDevices.isEmpty() && eventListener != null) {
+            eventListener.onUpdateAllClicked(new ArrayList<>(discoveredDevices));
+        }
+    }
+
+    /**
+     * Handles the connect to device button click.
+     */
+    private void handleConnectToDevice() {
+        int selectedRow = devicesTable.getSelectedRow();
+
+        if (selectedRow >= 0 && selectedRow < discoveredDevices.size()) {
+            PlanetSwitchDevice device = discoveredDevices.get(devicesTable.convertRowIndexToModel(selectedRow));
+            if (eventListener != null) {
+                eventListener.onConnectToDeviceClicked(device);
+            }
+        }
+    }
+
+    /**
+     * Handles the export menu action.
+     */
+    private void handleExport() {
+        if (discoveredDevices.isEmpty()) {
+            showInfo(lang.get("info.no_data_title"), lang.get("info.no_data_message"));
+            return;
+        }
+
+        if (eventListener != null) {
+            eventListener.onExportClicked(new ArrayList<>(discoveredDevices));
+        }
+    }
+
+    /**
+     * Handles the clear results action.
+     */
+    private void handleClearResults() {
+        if (eventListener != null) {
+            eventListener.onClearResultsClicked();
+        } else {
+            clearResults();
+        }
+    }
+
+    /**
+     * Changes the application language and refreshes the UI.
+     *
+     * @param languageCode the ISO 639-1 language code ("en" or "fr")
+     */
+    private void changeLanguage(String languageCode) {
+        logger.info("Changing language to: {}", languageCode);
+        lang.setLanguage(languageCode);
+        refreshUI();
+        logger.info("Language changed successfully to: {}", languageCode);
+    }
+
+    /**
+     * Refreshes the entire UI after a language change.
+     */
+    private void refreshUI() {
+        NetworkInterfaceCustom selectedAdapter = (NetworkInterfaceCustom) adapterComboBox.getSelectedItem();
+        List<PlanetSwitchDevice> currentDevices = new ArrayList<>(discoveredDevices);
+        int currentDiscoveredCount = lastDiscoveredCount;
+        String currentDuplicateMacs = lastDuplicateMacs;
+
+        getContentPane().removeAll();
+
+        createMenuBar();
+        createToolbar();
+        createCenterPanel();
+        createBottomPanel();
+
+        loadNetworkInterfaceCustoms(availableAdapters);
+        if (selectedAdapter != null) {
+            adapterComboBox.setSelectedItem(selectedAdapter);
+        }
+
+        displayDevices(currentDevices);
+        restoreProtocolStatus();
+
+        updateStatusAfterRefresh(currentDiscoveredCount, currentDuplicateMacs);
+
+        setTitle(lang.get("window.title"));
+        revalidate();
+        repaint();
+    }
+
+    /**
+     * Updates the status message after UI refresh.
+     */
+    private void updateStatusAfterRefresh(int deviceCount, String duplicateMacs) {
+        if (appState == APP_STATE.FINAL_STATE) {
+            if (deviceCount == 0) {
+                statusLabel.setText(lang.get("status.completed_none"));
+            } else {
+                String statusMsg = lang.get("status.completed_found", deviceCount);
+                if (!duplicateMacs.isEmpty()) {
+                    statusMsg += " " + lang.get("error.duplicate_message", duplicateMacs);
+                }
+                statusLabel.setText(statusMsg);
+            }
+        } else if (appState == APP_STATE.ADAPTERS_FOUND) {
+            statusLabel.setText(lang.get("status.ready_adapters", availableAdapters.size()));
+        }
+    }
+
+    /**
+     * Adds a device to the table with checkbox initialization.
+     */
+    private void addDeviceToTable(PlanetSwitchDevice device) {
+        tableModel.addRow(new Object[]{
+                LockIconRenderer.LOCK_UNKNOWN,
+                device.getDeviceName(),
+                device.getMacAddress(),
+                device.getVersion(),
+                device.getIpAddress(),
+                device.getNetMask(),
+                device.getGateway(),
+                device.getDescription(),
+                translateValue(device.getSystemLocation()),
+                translateValue(device.getSystemUptime()),
+                false, false, false, false
+        });
+    }
+
+    /**
+     * Adds a new device row to the table.
+     */
+    private void addDeviceRow(PlanetSwitchDevice device) {
+        discoveredDevices.add(device);
+        addDeviceToTable(device);
+        updateDeviceCount();
+        logger.debug("Added device row: {}", device.getDeviceName());
+    }
+
+    /**
+     * Updates an existing device row in the table.
+     */
+    private void updateDeviceRow(int row, PlanetSwitchDevice device) {
+        discoveredDevices.set(row, device);
+
+        tableModel.setValueAt(device.getDeviceName(), row, COL_DEVICE_NAME);
+        tableModel.setValueAt(device.getMacAddress(), row, COL_MAC);
+        tableModel.setValueAt(device.getVersion(), row, COL_FIRMWARE);
+        tableModel.setValueAt(device.getIpAddress(), row, COL_IPV4);
+        tableModel.setValueAt(device.getNetMask(), row, COL_NETMASK);
+        tableModel.setValueAt(device.getGateway(), row, COL_GATEWAY);
+        tableModel.setValueAt(device.getDescription(), row, COL_DESCRIPTION);
+        tableModel.setValueAt(translateValue(device.getSystemLocation()), row, COL_LOCATION);
+        tableModel.setValueAt(translateValue(device.getSystemUptime()), row, COL_UPTIME);
+
+        logger.debug("Updated device row: {}", device.getDeviceName());
     }
 
     /**
@@ -980,108 +1116,133 @@ public class MainWindow extends JFrame {
     }
 
     /**
-     * Updates an existing device row in the table.
-     *
-     * @param row the row index
-     * @param device the updated device data
+     * Returns the list of selected devices.
      */
-    private void updateDeviceRow(int row, PlanetSwitchDevice device) {
-        discoveredDevices.set(row, device);
+    private List<PlanetSwitchDevice> getSelectedDevices() {
+        List<PlanetSwitchDevice> selected = new ArrayList<>();
 
-        // Column 0 (lock) is not updated here, only via setSecurityStatus()
-        tableModel.setValueAt(device.getDeviceName(), row, 1);
-        tableModel.setValueAt(device.getMacAddress(), row, 2);
-        tableModel.setValueAt(device.getVersion(), row, 3);
-        tableModel.setValueAt(device.getIpAddress(), row, 4);
-        tableModel.setValueAt(device.getNetMask(), row, 5);
-        tableModel.setValueAt(device.getGateway(), row, 6);
-        tableModel.setValueAt(device.getDescription(), row, 7);
-        tableModel.setValueAt(translateValue(device.getSystemLocation()), row, 8);
-        tableModel.setValueAt(translateValue(device.getSystemUptime()), row, 9);
-
-        logger.debug("Updated device row: {}", device.getDeviceName());
-    }
-
-    /**
-     * Updates the security lock icon for a specific device.
-     *
-     * @param macAddress the device MAC address
-     * @param status the security status (LOCK_UNKNOWN, LOCK_SECURE, LOCK_INSECURE)
-     */
-    public void setSecurityStatus(String macAddress, int status) {
-        int row = findDeviceRowByMac(macAddress);
-
-        if (row >= 0) {
-            tableModel.setValueAt(status, row, 0);
-            securityStatusCache.put(macAddress, status);
-            logger.debug("Set security status to {} for device {}", status, macAddress);
+        for (int row : devicesTable.getSelectedRows()) {
+            if (row >= 0 && row < discoveredDevices.size()) {
+                selected.add(discoveredDevices.get(devicesTable.convertRowIndexToModel(row)));
+            }
         }
+
+        return selected;
     }
 
     /**
-     * Adds a new device row to the table.
-     *
-     * @param device the device to add
+     * Returns the column index for a protocol name.
      */
-    private void addDeviceRow(PlanetSwitchDevice device) {
-        discoveredDevices.add(device);
+    private int getProtocolColumnIndex(String protocol) {
+        return switch (protocol.toLowerCase()) {
+            case "telnet" -> COL_TELNET;
+            case "ssh" -> COL_SSH;
+            case "http" -> COL_HTTP;
+            case "https" -> COL_HTTPS;
+            default -> -1;
+        };
+    }
 
-        tableModel.addRow(new Object[]{
-                0,
-                device.getDeviceName(),
-                device.getMacAddress(),
-                device.getVersion(),
-                device.getIpAddress(),
-                device.getNetMask(),
-                device.getGateway(),
-                device.getDescription(),
-                device.getSystemLocation(),
-                device.getSystemUptime(),
-                Boolean.FALSE,
-                Boolean.FALSE,
-                Boolean.FALSE,
-                Boolean.FALSE
+    /**
+     * Restores protocol checkbox status from the cache after UI refresh.
+     */
+    private void restoreProtocolStatus() {
+        protocolStatusCache.forEach((macAddress, protocols) ->
+                protocols.forEach((protocol, status) -> {
+                    int row = findDeviceRowByMac(macAddress);
+                    if (row >= 0) {
+                        int columnIndex = getProtocolColumnIndex(protocol);
+                        if (columnIndex >= 0) {
+                            tableModel.setValueAt(status, row, columnIndex);
+                        }
+                    }
+                }));
+
+        securityStatusCache.forEach((macAddress, status) -> {
+            int row = findDeviceRowByMac(macAddress);
+            if (row >= 0) {
+                tableModel.setValueAt(status, row, COL_LOCK);
+            }
         });
 
-        updateDeviceCount();
-        logger.debug("Added device row: {}", device.getDeviceName());
+        logger.debug("Restored protocol status for {} devices", protocolStatusCache.size());
     }
 
+    /**
+     * Translates special values to the current language.
+     */
+    private String translateValue(String value) {
+        if (value == null || value.isEmpty()) {
+            return lang.get("table.na");
+        }
+
+        String normalizedValue = value.trim().toUpperCase();
+
+        return switch (normalizedValue) {
+            case "TIMEOUT" -> lang.get("table.timeout");
+            case "ERROR" -> lang.get("table.error");
+            case "N/A", "N/D" -> lang.get("table.na");
+            case "SNMP NOT AVAILABLE" -> lang.get("table.snmp_not_available");
+            case "LOADING..." -> lang.get("table.loading");
+            case "DUPLICATE", "DUPLICATES", "DOUBLON", "DOUBLONS" -> lang.get("table.duplicate");
+            default -> value;
+        };
+    }
+
+    /**
+     * Updates the device count label.
+     */
     private void updateDeviceCount() {
         deviceCountLabel.setText(lang.get("table.devices_found", discoveredDevices.size()));
     }
 
+    /**
+     * Updates the enabled state of action buttons based on selection.
+     */
     private void updateButtonStates() {
         int selectedCount = devicesTable.getSelectedRowCount();
         boolean hasSelection = selectedCount > 0;
         boolean multiSelection = selectedCount > 1;
         boolean hasDevices = !discoveredDevices.isEmpty();
 
-        updateDeviceBtn.setEnabled(hasSelection && selectedCount == 1);
-        updateMultiBtn.setEnabled(multiSelection);
-        updateAllBtn.setEnabled(hasDevices);
-        connectBtn.setEnabled(hasSelection && selectedCount == 1);
+        updateDeviceButton.setEnabled(hasSelection && selectedCount == 1);
+        updateMultiButton.setEnabled(multiSelection);
+        updateAllButton.setEnabled(hasDevices);
+        connectButton.setEnabled(hasSelection && selectedCount == 1);
     }
 
+    /**
+     * Clears the discovery state.
+     */
+    private void clearDiscoveryState() {
+        this.lastDiscoveredCount = 0;
+        this.lastDuplicateMacs = "";
+        logger.debug("Discovery state cleared");
+    }
+
+    /**
+     * Shows the preferences dialog.
+     */
     private void showPreferences() {
         PreferencesDialog dialog = new PreferencesDialog(this);
         dialog.setVisible(true);
         dialog.toFront();
+
         if (dialog.wasApplied()) {
-            showInfo(
-                    lang.get("preferences.applied_title"),
-                    lang.get("preferences.applied_message")
-            );
+            showInfo(lang.get("preferences.applied_title"), lang.get("preferences.applied_message"));
         }
     }
 
+    /**
+     * Shows the documentation dialog.
+     */
     private void showDocumentation() {
-        showInfo(
-                lang.get("info.documentation_title"),
-                lang.get("info.documentation_message")
-        );
+        showInfo(lang.get("info.documentation_title"), lang.get("info.documentation_message"));
     }
 
+    /**
+     * Shows the about dialog.
+     */
     private void showAbout() {
         JOptionPane.showMessageDialog(
                 this,
