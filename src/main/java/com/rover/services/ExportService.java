@@ -91,7 +91,7 @@ public class ExportService {
                 sheet.autoSizeColumn(i);
             }
 
-            // Write to file
+            // Write to a file
             try (FileOutputStream fileOut = new FileOutputStream(file)) {
                 workbook.write(fileOut);
             }
@@ -125,19 +125,19 @@ public class ExportService {
      * Populates a row with device data.
      */
     private void populateDeviceRow(Row row, PlanetSwitchDevice device) {
-        int cellNum = 0;
-
-        row.createCell(cellNum++).setCellValue(safeString(device.getDeviceName()));
-        row.createCell(cellNum++).setCellValue(safeString(device.getMacAddress()));
-        row.createCell(cellNum++).setCellValue(safeString(device.getVersion()));
-        row.createCell(cellNum++).setCellValue(safeString(device.getIpAddress()));
-        row.createCell(cellNum++).setCellValue(safeString(device.getNetMask()));
-        row.createCell(cellNum++).setCellValue(safeString(device.getGateway()));
-        row.createCell(cellNum++).setCellValue(safeString(device.getDescription()));
-        row.createCell(cellNum++).setCellValue(safeString(device.getSystemLocation()));
-        row.createCell(cellNum++).setCellValue(safeString(device.getSystemUptime()));
-
-        // Note: Protocol availability (Telnet, SSH, HTTP, HTTPS) would be added here if available in the model
+        row.createCell(0).setCellValue(safeString(device.getDeviceName()));
+        row.createCell(1).setCellValue(safeString(device.getMacAddress()));
+        row.createCell(2).setCellValue(safeString(device.getVersion()));
+        row.createCell(3).setCellValue(safeString(device.getIpAddress()));
+        row.createCell(4).setCellValue(safeString(device.getNetMask()));
+        row.createCell(5).setCellValue(safeString(device.getGateway()));
+        row.createCell(6).setCellValue(safeString(device.getDescription()));
+        row.createCell(7).setCellValue(safeString(device.getSystemLocation()));
+        row.createCell(8).setCellValue(safeString(device.getSystemUptime()));
+        row.createCell(9).setCellValue(String.valueOf(device.isTelnetUp()));
+        row.createCell(10).setCellValue(String.valueOf(device.isSSHUp()));
+        row.createCell(11).setCellValue(String.valueOf(device.isHTTPUp()));
+        row.createCell(12).setCellValue(String.valueOf(device.isHTTPSUp()));
     }
 
     /**
