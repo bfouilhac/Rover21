@@ -340,7 +340,6 @@ public class ProtocolTestService {
                 } catch (SocketTimeoutException e) {
                     logger.debug("Telnet timeout during login: {}", e.getMessage());
                 }
-                Thread.sleep(LOGIN_WAIT_INTERVAL);
             }
 
             return false;
@@ -496,7 +495,6 @@ public class ProtocolTestService {
                 logger.debug("SSH: Sent <enter> to continue past welcome screen on {}", ipAddress);
                 welcomeScreenPassed = true;
                 fullResponse.setLength(0);
-                Thread.sleep(PROMPT_RESPONSE_DELAY);
                 continue;
             }
 
@@ -511,7 +509,6 @@ public class ProtocolTestService {
 
                 sendCredential(out, username);
                 fullResponse.setLength(0);
-                Thread.sleep(PROMPT_RESPONSE_DELAY);
                 continue;
             }
 
@@ -526,7 +523,6 @@ public class ProtocolTestService {
 
                 sendCredential(out, password);
                 fullResponse.setLength(0);
-                Thread.sleep(PROMPT_RESPONSE_DELAY);
                 continue;
             }
 
@@ -539,8 +535,6 @@ public class ProtocolTestService {
                 logger.info("SSH authentication successful for {} - got shell prompt", ipAddress);
                 return true;
             }
-
-            Thread.sleep(LOGIN_WAIT_INTERVAL);
         }
 
         return analyzeFinalSshState(fullResponse.toString(), ipAddress, usernamePromptCount, passwordPromptCount);
@@ -619,11 +613,9 @@ public class ProtocolTestService {
                         return null;
                     }
 
-                    public void checkClientTrusted(java.security.cert.X509Certificate[] certs, String authType) {
-                    }
+                    public void checkClientTrusted(java.security.cert.X509Certificate[] certs, String authType) {}
 
-                    public void checkServerTrusted(java.security.cert.X509Certificate[] certs, String authType) {
-                    }
+                    public void checkServerTrusted(java.security.cert.X509Certificate[] certs, String authType) {}
                 }
         };
 
@@ -662,9 +654,7 @@ public class ProtocolTestService {
     /**
      * Checks if the text contains a shell prompt.
      */
-    private boolean isShellPrompt(String text) {
-        return text.contains("#") || text.contains(">") || text.contains("$");
-    }
+    private boolean isShellPrompt(String text) {return text.contains("#") || text.contains(">") || text.contains("$");}
 
     /**
      * Checks if text is a welcome screen requiring enter key.
@@ -711,8 +701,7 @@ public class ProtocolTestService {
         if (socket != null && !socket.isClosed()) {
             try {
                 socket.close();
-            } catch (IOException ignored) {
-            }
+            } catch (IOException ignored) {}
         }
     }
 
