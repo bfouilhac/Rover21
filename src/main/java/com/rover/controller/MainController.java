@@ -250,7 +250,7 @@ public class MainController implements MainWindow.UIEventListener {
         String fileExtension = fileType.toLowerCase();
         String fileDescription = isCsv ? "CSV Files (*.csv)" : "Excel Files (*.xlsx)";
 
-        JFileChooser fileChooser = new JFileChooser();
+        JFileChooser fileChooser = createFileChooser();
         fileChooser.setDialogTitle(lang.get("info.export_title"));
         fileChooser.setFileFilter(new FileNameExtensionFilter(fileDescription, fileExtension));
         fileChooser.setSelectedFile(new File("planet_devices_export." + fileExtension));
@@ -284,12 +284,15 @@ public class MainController implements MainWindow.UIEventListener {
             }
 
             if (selectedFile.exists()) {
-                int overwriteResult = JOptionPane.showConfirmDialog(
+                int overwriteResult = JOptionPane.showOptionDialog(
                         view,
                         lang.get("info.export_overwrite_message", selectedFile.getName()),
                         lang.get("info.export_overwrite_title"),
                         JOptionPane.YES_NO_OPTION,
-                        JOptionPane.WARNING_MESSAGE
+                        JOptionPane.WARNING_MESSAGE,
+                        null,
+                        new String[]{lang.get("button.yes"), lang.get("button.no")},
+                        lang.get("button.no")
                 );
 
                 if (overwriteResult != JOptionPane.YES_OPTION) {
@@ -639,5 +642,29 @@ public class MainController implements MainWindow.UIEventListener {
         return devices.stream()
                 .map(device -> device.getDeviceName() + " (" + device.getIpAddress() + ")")
                 .collect(Collectors.joining("\n"));
+    }
+
+    /**
+     * Create a JFileChooser with translated elements depending on the locale language
+     *
+     * @return the JFileChooser created and updated
+     * @see JFileChooser
+     */
+    private JFileChooser createFileChooser(){
+        UIManager.put("FileChooser.saveButtonText", lang.get("button.save"));
+        UIManager.put("FileChooser.cancelButtonText", lang.get("button.cancel"));
+        UIManager.put("FileChooser.saveDialogTitleText", lang.get("info.export_title"));
+        UIManager.put("FileChooser.lookInLabelText", lang.get("filechooser.look_in"));
+        UIManager.put("FileChooser.fileNameLabelText", lang.get("filechooser.file_name"));
+        UIManager.put("FileChooser.filesOfTypeLabelText", lang.get("filechooser.files_of_type"));
+        UIManager.put("FileChooser.upFolderToolTipText", lang.get("filechooser.up_folder"));
+        UIManager.put("FileChooser.homeFolderToolTipText", lang.get("filechooser.home_folder"));
+        UIManager.put("FileChooser.newFolderToolTipText", lang.get("filechooser.new_folder"));
+        UIManager.put("FileChooser.listViewButtonToolTipText", lang.get("filechooser.list_view"));
+        UIManager.put("FileChooser.detailsViewButtonToolTipText", lang.get("filechooser.details_view"));
+
+        JFileChooser fileChooser = new JFileChooser();
+        fileChooser.updateUI();
+        return fileChooser;
     }
 }
