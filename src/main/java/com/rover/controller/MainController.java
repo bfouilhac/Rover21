@@ -250,29 +250,57 @@ public class MainController implements MainWindow.UIEventListener {
         String fileExtension = fileType.toLowerCase();
         String fileDescription = isCsv ? "CSV Files (*.csv)" : "Excel Files (*.xlsx)";
 
-        // Open the file chooser to select save location
         JFileChooser fileChooser = new JFileChooser();
         fileChooser.setDialogTitle(lang.get("info.export_title"));
         fileChooser.setFileFilter(new FileNameExtensionFilter(fileDescription, fileExtension));
         fileChooser.setSelectedFile(new File("planet_devices_export." + fileExtension));
 
-        if (fileChooser.showSaveDialog(view) != JFileChooser.APPROVE_OPTION) {
-            logger.info("Export cancelled by user at file selection");
-            view.showInfo(
-                    lang.get("info.export_cancelled_title"),
-                    lang.get("info.export_cancelled_message")
-            );
-            return;
+        String lastExportPath = PreferencesManager.getLastExportPath();
+        if (lastExportPath != null && !lastExportPath.isEmpty()) {
+            File lastDir = new File(lastExportPath);
+            if (lastDir.exists() && lastDir.isDirectory()) {
+                fileChooser.setCurrentDirectory(lastDir);
+            }
         }
 
-        File selectedFile = fileChooser.getSelectedFile();
+        File selectedFile = null;
 
-        // Ensure a file has the correct extension
-        if (!selectedFile.getName().toLowerCase().endsWith("." + fileExtension)) {
-            selectedFile = new File(selectedFile.getAbsolutePath() + "." + fileExtension);
+        while (selectedFile == null) {
+            int dialogResult = fileChooser.showSaveDialog(view);
+
+            if (dialogResult != JFileChooser.APPROVE_OPTION) {
+                logger.info("Export cancelled by user");
+                view.showInfo(
+                        lang.get("info.export_cancelled_title"),
+                        lang.get("info.export_cancelled_message")
+                );
+                return;
+            }
+
+            selectedFile = fileChooser.getSelectedFile();
+
+            if (!selectedFile.getName().toLowerCase().endsWith("." + fileExtension)) {
+                selectedFile = new File(selectedFile.getAbsolutePath() + "." + fileExtension);
+            }
+
+            if (selectedFile.exists()) {
+                int overwriteResult = JOptionPane.showConfirmDialog(
+                        view,
+                        lang.get("info.export_overwrite_message", selectedFile.getName()),
+                        lang.get("info.export_overwrite_title"),
+                        JOptionPane.YES_NO_OPTION,
+                        JOptionPane.WARNING_MESSAGE
+                );
+
+                if (overwriteResult != JOptionPane.YES_OPTION) {
+                    selectedFile = null;
+                }
+            }
         }
 
-        ExportService exportService = new ExportService(); // Perform the export
+        PreferencesManager.saveLastExportPath(selectedFile.getParentFile().getAbsolutePath());
+
+        ExportService exportService = new ExportService();
 
         try {
             if (isCsv) {

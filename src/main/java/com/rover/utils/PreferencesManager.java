@@ -62,6 +62,16 @@ public class PreferencesManager {
     private static final int DEFAULT_SSH_PORT = 22;
     private static final int DEFAULT_TELNET_PORT = 23;
 
+    private static final String KEY_LAST_EXPORT_PATH = "last.export.path";
+
+    public static String getLastExportPath() {
+        return prefs.get(KEY_LAST_EXPORT_PATH, "");
+    }
+
+    public static void saveLastExportPath(String path) {
+        prefs.put(KEY_LAST_EXPORT_PATH, path);
+    }
+
 
     /**
      * Session-only list of custom credentials for security testing.
