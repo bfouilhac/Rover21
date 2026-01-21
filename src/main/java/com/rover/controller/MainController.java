@@ -463,7 +463,6 @@ public class MainController implements MainWindow.UIEventListener {
 
                     // Initialize protocol test tracking
                     expectedProtocolTests = devices.size();
-                    completedProtocolTests = 0;
 
                     // If no devices found, go directly to the final state
                     if (devices.isEmpty()) {
@@ -533,7 +532,7 @@ public class MainController implements MainWindow.UIEventListener {
             // Update status to show enrichment is complete
             SwingUtilities.invokeLater(() -> {
                 view.setAppState(APP_STATE.PROTOCOL_TEST_END);
-                view.setStatusMessage(lang.get("status.enrichment_complete", expectedProtocolTests));
+                view.setStatusMessage(lang.get("status.enrichment_complete", completedProtocolTests));
                 view.setAppState(APP_STATE.FINAL_STATE);
             });
         }
