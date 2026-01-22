@@ -18,7 +18,7 @@ import java.util.Objects;
 public class NetworkInterfaceCustom {
 
     /** Regular expression pattern for validating IPv4 addresses. */
-    private static final String IPV4_PATTERN =
+    public static final String IPV4_PATTERN =
             "^((0|1\\d?\\d?|2[0-4]?\\d?|25[0-5]?|[3-9]\\d?)\\.){3}" +
                     "(0|1\\d?\\d?|2[0-4]?\\d?|25[0-5]?|[3-9]\\d?)$";
 

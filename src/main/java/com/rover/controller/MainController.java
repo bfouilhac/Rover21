@@ -2,11 +2,7 @@ package com.rover.controller;
 
 import com.rover.model.NetworkInterfaceCustom;
 import com.rover.model.PlanetSwitchDevice;
-import com.rover.services.DiscoveryCallback;
-import com.rover.services.ExportService;
-import com.rover.services.NetworkAdapterService;
-import com.rover.services.PlanetDiscoveryService;
-import com.rover.services.ProtocolTestService;
+import com.rover.services.*;
 import com.rover.ui.APP_STATE;
 import com.rover.ui.MainWindow;
 import com.rover.utils.LanguageManager;
@@ -46,8 +42,8 @@ public class MainController implements MainWindow.UIEventListener {
     private final MainWindow view;
 
     private final NetworkAdapterService adapterService;
-
     private final PlanetDiscoveryService discoveryService;
+    private final SwitchConfigService configService;
 
     // Protocol enrichment tracking
     private int expectedProtocolTests = 0;
@@ -67,6 +63,7 @@ public class MainController implements MainWindow.UIEventListener {
         this.view = view;
         this.adapterService = new NetworkAdapterService();
         this.discoveryService = new PlanetDiscoveryService();
+        this.configService = new SwitchConfigService();
 
         view.setEventListener(this);
         logger.info("MainController initialized");
@@ -116,21 +113,21 @@ public class MainController implements MainWindow.UIEventListener {
      * displays the remaining discovery time to the user.
      * </p>
      *
-     * @param selectedAdapter the network adapter to use for discovery
+     * @param sAdapter the network adapter to use for discovery
      * @see SwingWorker
      * @see DiscoveryCallback
      * @see PlanetDiscoveryService#discoverDevices(String, DiscoveryCallback)
      */
     @Override
-    public void onDiscoverClicked(NetworkInterfaceCustom selectedAdapter) {
+    public void onDiscoverClicked(NetworkInterfaceCustom sAdapter) {
         view.clearResults();
-        logger.info("Discover clicked for adapter: {}", selectedAdapter.getName());
+        logger.info("Discover clicked for adapter: {}", sAdapter.getName());
 
         // Reset protocol test tracking
         expectedProtocolTests = 0;
         completedProtocolTests = 0;
 
-        if (!adapterService.isAdapterValid(selectedAdapter)) {
+        if (!adapterService.isAdapterValid(sAdapter)) {
             showInvalidAdapterError();
             return;
         }
@@ -138,7 +135,7 @@ public class MainController implements MainWindow.UIEventListener {
         view.setScanningMode(true);
         view.setAppState(APP_STATE.SEARCHING);
 
-        executeDiscoveryWorker(selectedAdapter);
+        executeDiscoveryWorker(sAdapter);
     }
 
     /**
@@ -188,25 +185,41 @@ public class MainController implements MainWindow.UIEventListener {
     }
 
     /**
-     * Handles the update all devices button click event.
+     * Handles the startup config button click event.
      * <p>
-     * This method is called when the user clicks the "Update All" button to update
-     * all discovered switches at once. Currently, it displays an information dialog
-     * indicating that the mass update feature is not yet implemented.
+     * This method downloads the configuration via SSH using "show running-config"
+     * which is universal across all PLANET switch models.
      * </p>
      *
-     * @param devices all discovered PLANET switches
-     * @see MainWindow#showInfo(String, String)
+     * @param device the device from which to download the config
      */
     @Override
-    public void onUpdateAllClicked(List<PlanetSwitchDevice> devices) {
-        logger.info("Update all clicked: {} devices", devices.size());
+    public void onGetStartupConfigClicked(PlanetSwitchDevice device) {
+        logger.info("Get startup config requested for: {}", device.getIpAddress());
 
-        // TODO: Implement mass firmware update for all devices
-        view.showInfo(
-                lang.get("info.update_all_title"),
-                lang.get("info.update_all_message", devices.size())
-        );
+        if (!device.isSSHUp()) { // Checking SSH
+            view.showError(
+                    lang.get("error.ssh_unavailable_title"),
+                    lang.get("error.ssh_unavailable_message", device.getIpAddress())
+            );
+            return;
+        }
+
+        if (device.getUsername() == null || device.getPassword() == null) {
+            view.showError(
+                    lang.get("error.no_credentials_title"),
+                    lang.get("error.no_credentials_message", device.getIpAddress())
+            );
+            return;
+        }
+
+        File saveFile = promptForSaveLocation(device);
+        if (saveFile == null) { // Choosing a file location
+            logger.info("Config download cancelled by user");
+            return;
+        }
+
+        downloadConfigInBackground(device, saveFile);
     }
 
     /**
@@ -417,8 +430,7 @@ public class MainController implements MainWindow.UIEventListener {
                 Thread countdownThread = startCountdownThread();
 
                 DiscoveryCallback callback = createDiscoveryCallback();
-                List<PlanetSwitchDevice> devices = discoveryService.discoverDevices(
-                        selectedAdapter.getIpAddress(), callback);
+                List<PlanetSwitchDevice> devices = discoveryService.discoverDevices(selectedAdapter.getIpAddress(), callback);
 
                 countdownThread.interrupt();
                 return devices;
@@ -474,6 +486,8 @@ public class MainController implements MainWindow.UIEventListener {
                 device.setSSHUp(result.isSshAvailable());
                 device.setHTTPUp(result.isHttpAvailable());
                 device.setHTTPSUp(result.isHttpsAvailable());
+                device.setUsername(result.getUsername());
+                device.setPassword(result.getPassword());
 
                 // Track protocol test completion
                 checkProtocolTestsCompletion();
@@ -666,5 +680,110 @@ public class MainController implements MainWindow.UIEventListener {
         JFileChooser fileChooser = new JFileChooser();
         fileChooser.updateUI();
         return fileChooser;
+    }
+
+    /**
+     * Prompts the user to choose a save location for the config file.
+     *
+     * @param device the device for which to save the config
+     * @return the selected File, or null if canceled
+     */
+    private File promptForSaveLocation(PlanetSwitchDevice device) {
+        JFileChooser fileChooser = createFileChooser();
+        fileChooser.setDialogTitle(lang.get("info.save_config_title"));
+        fileChooser.setFileFilter(new FileNameExtensionFilter("Config files (*.cfg)", "cfg"));
+
+        String lastPath = PreferencesManager.getLastExportPath();
+        if (!lastPath.isEmpty()) {
+            fileChooser.setCurrentDirectory(new File(lastPath));
+        }
+
+        String defaultFileName = sanitizeFileName(device.getDeviceName()) + "_startup_config.cfg";
+        fileChooser.setSelectedFile(new File(defaultFileName));
+
+        int result = fileChooser.showSaveDialog(view);
+
+        if (result == JFileChooser.APPROVE_OPTION) {
+            File selectedFile = fileChooser.getSelectedFile();
+
+            if (!selectedFile.getName().endsWith(".cfg")) {
+                selectedFile = new File(selectedFile.getAbsolutePath() + ".cfg");
+            }
+
+            PreferencesManager.saveLastExportPath(selectedFile.getParent());
+
+            if (selectedFile.exists()) {
+                int overwrite = JOptionPane.showConfirmDialog(
+                        view,
+                        lang.get("info.overwrite_message", selectedFile.getName()),
+                        lang.get("info.overwrite_title"),
+                        JOptionPane.YES_NO_OPTION
+                );
+
+                if (overwrite != JOptionPane.YES_OPTION) {
+                    return null;
+                }
+            }
+
+            return selectedFile;
+        }
+
+        return null;
+    }
+
+    /**
+     * Downloads the config file in a background thread to avoid blocking the UI.
+     *
+     * @param device the device to download from
+     * @param destination the file to save to
+     */
+    private void downloadConfigInBackground(PlanetSwitchDevice device, File destination) {
+        view.setStatusMessage(lang.get("status.downloading_config", device.getDeviceName()));
+
+        SwingWorker<Void, Void> worker = new SwingWorker<>() {
+            @Override
+            protected Void doInBackground() throws Exception {
+                configService.downloadConfig(device, SwitchConfigService.ConfigType.STARTUP, destination);
+                return null;
+            }
+
+            @Override
+            protected void done() {
+                try {
+                    get();
+                    view.showInfo(
+                            lang.get("info.config_download_success_title"),
+                            lang.get("info.config_download_success_message", destination.getAbsolutePath())
+                    );
+                    view.setStatusMessage(lang.get("status.download_success"));
+                    logger.info("Config downloaded successfully to {}", destination.getAbsolutePath());
+                } catch (Exception e) {
+                    logger.error("Failed to download config from {}", device.getIpAddress(), e);
+
+                    Throwable cause = e.getCause() != null ? e.getCause() : e;
+                    String errorMsg = cause.getMessage();
+
+                    view.showError(
+                            lang.get("error.config_download_title"),
+                            lang.get("error.config_download_message", device.getIpAddress(), errorMsg)
+                    );
+                }
+            }
+        };
+
+        worker.execute();
+    }
+
+    /**
+     * Sanitizes a device name to be safe for use as a filename.
+     *
+     * @param deviceName the device name to sanitize
+     * @return sanitized filename
+     */
+    private String sanitizeFileName(String deviceName) {
+        if (deviceName == null || deviceName.isEmpty()) {
+            return "device";
+        }
+        return deviceName.replaceAll("[^a-zA-Z0-9._-]", "_");
     }
 }

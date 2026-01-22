@@ -22,6 +22,8 @@ public class PlanetSwitchDevice {
     private String netMask; // Network mask (e.g., "255.255.255.0").
     private String gateway;
     private String description; //** Additional device description.
+    private String username;
+    private String password;
 
     private boolean isOnline;
 
@@ -42,6 +44,20 @@ public class PlanetSwitchDevice {
      * </p>
      */
     public PlanetSwitchDevice() {this.isOnline = false;}
+
+    /**
+     * Returns the username of the admin account for this device
+     *
+     * @return the username as a String
+     */
+    public String getUsername(){return this.username;}
+
+    /**
+     * Returns the password of the admin account for this device
+     *
+     * @return the password as a String
+     */
+    public String getPassword(){return this.password;}
 
 
     /**
@@ -152,6 +168,16 @@ public class PlanetSwitchDevice {
      * @return either true or false
      */
     public boolean isHTTPSUp() {return isHTTPSUp;}
+
+    /**
+     * Sets the username of the admin account for this device
+     */
+    public void setUsername(String username){this.username = username;}
+
+    /**
+     * Sets the password of the admin account for this device
+     */
+    public void setPassword(String password){this.password = password;}
 
 
     /**

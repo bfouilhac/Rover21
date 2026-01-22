@@ -347,8 +347,7 @@ public class PlanetDiscoveryService {
      * @param callback the callback for notifications
      * @param executor the executor to run tests on
      */
-    private void submitProtocolTests(PlanetSwitchDevice device, DiscoveryCallback callback,
-                                     ExecutorService executor) {
+    private void submitProtocolTests(PlanetSwitchDevice device, DiscoveryCallback callback, ExecutorService executor) {
         executor.submit(() -> {
             long startTime = System.currentTimeMillis();
             ProtocolTestService protocolService = new ProtocolTestService();

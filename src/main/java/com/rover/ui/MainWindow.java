@@ -139,9 +139,9 @@ public class MainWindow extends JFrame {
         /**
          * Called when the update-all button is clicked.
          *
-         * @param devices all discovered devices
+         * @param device all discovered devices
          */
-        void onUpdateAllClicked(List<PlanetSwitchDevice> devices);
+        void onGetStartupConfigClicked(PlanetSwitchDevice device);
 
         /**
          * Called when the connection button is clicked.
@@ -852,7 +852,7 @@ public class MainWindow extends JFrame {
 
         updateDeviceButton = createActionButton(lang.get("button.update_device"), e -> handleUpdateDevice());
         updateMultiButton = createActionButton(lang.get("button.update_multi"), e -> handleUpdateMulti());
-        updateAllButton = createActionButton(lang.get("button.update_all"), e -> handleUpdateAll());
+        updateAllButton = createActionButton(lang.get("button.get_startup_config"), e -> handleGetStartupConfig());
         connectButton = createActionButton(lang.get("button.connect"), e -> handleConnectToDevice());
 
         bottomPanel.add(updateDeviceButton);
@@ -951,9 +951,14 @@ public class MainWindow extends JFrame {
     /**
      * Handles the update all button click.
      */
-    private void handleUpdateAll() {
-        if (!discoveredDevices.isEmpty() && eventListener != null) {
-            eventListener.onUpdateAllClicked(new ArrayList<>(discoveredDevices));
+    private void handleGetStartupConfig() {
+        int selectedRow = devicesTable.getSelectedRow();
+
+        if (selectedRow >= 0) {
+            PlanetSwitchDevice device = discoveredDevices.get(devicesTable.convertRowIndexToModel(selectedRow));
+            if (eventListener != null) {
+                eventListener.onGetStartupConfigClicked(device);
+            }
         }
     }
 
