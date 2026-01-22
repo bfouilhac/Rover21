@@ -139,52 +139,6 @@ public class MainController implements MainWindow.UIEventListener {
     }
 
     /**
-     * Handles the update device button click event.
-     * <p>
-     * This method is called when the user clicks the "Update Device" button
-     * for a selected switch. Currently, it displays an information dialog indicating
-     * that the firmware update feature is not yet implemented.
-     * </p>
-     *
-     * @param device the PLANET switch to update
-     * @see MainWindow#showInfo(String, String)
-     */
-    @Override
-    public void onUpdateDeviceClicked(PlanetSwitchDevice device) {
-        logger.info("Update device clicked: {}", device.getDeviceName());
-
-        // TODO: Implement firmware update for single device
-        view.showInfo(
-                lang.get("info.update_device_title"),
-                lang.get("info.update_device_message", device.getDeviceName(), device.getIpAddress())
-        );
-    }
-
-    /**
-     * Handles the update multiple devices button click event.
-     * <p>
-     * This method is called when the user selects multiple switches and clicks
-     * the "Update Multi" button. Currently, it displays an information dialog with
-     * the list of selected devices and indicates that a batch update is not yet implemented.
-     * </p>
-     *
-     * @param devices the list of PLANET switches to update
-     * @see MainWindow#showInfo(String, String)
-     */
-    @Override
-    public void onUpdateMultiClicked(List<PlanetSwitchDevice> devices) {
-        logger.info("Update multi clicked: {} devices", devices.size());
-
-        String deviceList = formatDeviceList(devices);
-
-        // TODO: Implement batch firmware update
-        view.showInfo(
-                lang.get("info.update_multi_title"),
-                lang.get("info.update_multi_message", devices.size(), deviceList)
-        );
-    }
-
-    /**
      * Handles the startup config button click event.
      * <p>
      * This method downloads the configuration via SSH using "show running-config"
@@ -220,28 +174,6 @@ public class MainController implements MainWindow.UIEventListener {
         }
 
         downloadConfigInBackground(device, saveFile);
-    }
-
-    /**
-     * Handles the connect to device button click event.
-     * <p>
-     * This method is called when the user wants to open the web interface
-     * of a selected switch. Currently, it displays an information dialog indicating
-     * that the browser integration feature is not yet implemented.
-     * </p>
-     *
-     * @param device the PLANET switch to connect to
-     * @see MainWindow#showInfo(String, String)
-     */
-    @Override
-    public void onConnectToDeviceClicked(PlanetSwitchDevice device) {
-        logger.info("Connect to device clicked: {}", device.getDeviceName());
-
-        // TODO: Implement browser opening to device web interface (http://IP)
-        view.showInfo(
-                lang.get("info.connect_title"),
-                lang.get("info.connect_message", device.getDeviceName(), device.getIpAddress())
-        );
     }
 
     /**
@@ -299,8 +231,8 @@ public class MainController implements MainWindow.UIEventListener {
             if (selectedFile.exists()) {
                 int overwriteResult = JOptionPane.showOptionDialog(
                         view,
-                        lang.get("info.export_overwrite_message", selectedFile.getName()),
-                        lang.get("info.export_overwrite_title"),
+                        lang.get("info.overwrite_message", selectedFile.getName()),
+                        lang.get("info.overwrite_title"),
                         JOptionPane.YES_NO_OPTION,
                         JOptionPane.WARNING_MESSAGE,
                         null,
@@ -647,18 +579,6 @@ public class MainController implements MainWindow.UIEventListener {
     }
 
     /**
-     * Formats a list of devices into a displayable string.
-     *
-     * @param devices the devices to format
-     * @return a newline-separated string of device names and IPs
-     */
-    private String formatDeviceList(List<PlanetSwitchDevice> devices) {
-        return devices.stream()
-                .map(device -> device.getDeviceName() + " (" + device.getIpAddress() + ")")
-                .collect(Collectors.joining("\n"));
-    }
-
-    /**
      * Create a JFileChooser with translated elements depending on the locale language
      *
      * @return the JFileChooser created and updated
@@ -713,14 +633,18 @@ public class MainController implements MainWindow.UIEventListener {
             PreferencesManager.saveLastExportPath(selectedFile.getParent());
 
             if (selectedFile.exists()) {
-                int overwrite = JOptionPane.showConfirmDialog(
+                int overwriteResult = JOptionPane.showOptionDialog(
                         view,
                         lang.get("info.overwrite_message", selectedFile.getName()),
                         lang.get("info.overwrite_title"),
-                        JOptionPane.YES_NO_OPTION
+                        JOptionPane.YES_NO_OPTION,
+                        JOptionPane.WARNING_MESSAGE,
+                        null,
+                        new String[]{lang.get("button.yes"), lang.get("button.no")},
+                        lang.get("button.no")
                 );
 
-                if (overwrite != JOptionPane.YES_OPTION) {
+                if (overwriteResult != JOptionPane.YES_OPTION) {
                     return null;
                 }
             }

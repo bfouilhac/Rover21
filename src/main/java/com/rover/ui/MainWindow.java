@@ -38,7 +38,7 @@ public class MainWindow extends JFrame {
     private static final Font FONT_MODERN = new Font("Segoe UI", Font.PLAIN, 13);
     private static final Font FONT_TABLE = new Font("Segoe UI", Font.PLAIN, 12);
 
-    private static final int BUTTON_WIDTH = 130;
+    private static final int BUTTON_WIDTH = 225;
     private static final int BUTTON_HEIGHT = 32;
 
     private static final Color COLOR_ALTERNATE_ROW = new Color(224, 224, 224);
@@ -85,10 +85,7 @@ public class MainWindow extends JFrame {
     private DefaultTableModel tableModel;
 
     // Action buttons
-    private JButton updateDeviceButton;
-    private JButton updateMultiButton;
-    private JButton updateAllButton;
-    private JButton connectButton;
+    private JButton downloadSCButton;
     private JButton discoverButton;
     private JButton refreshAdaptersButton;
 
@@ -123,32 +120,11 @@ public class MainWindow extends JFrame {
         void onDiscoverClicked(NetworkInterfaceCustom selectedAdapter);
 
         /**
-         * Called when the update device button is clicked.
-         *
-         * @param device the device to update
-         */
-        void onUpdateDeviceClicked(PlanetSwitchDevice device);
-
-        /**
-         * Called when the update multi button is clicked.
-         *
-         * @param devices the list of selected devices to update
-         */
-        void onUpdateMultiClicked(List<PlanetSwitchDevice> devices);
-
-        /**
          * Called when the update-all button is clicked.
          *
          * @param device all discovered devices
          */
         void onGetStartupConfigClicked(PlanetSwitchDevice device);
-
-        /**
-         * Called when the connection button is clicked.
-         *
-         * @param device the device to connect to
-         */
-        void onConnectToDeviceClicked(PlanetSwitchDevice device);
 
         /**
          * Called when the export menu item is clicked.
@@ -850,15 +826,9 @@ public class MainWindow extends JFrame {
         JPanel bottomPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 12));
         bottomPanel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(224, 224, 224)));
 
-        updateDeviceButton = createActionButton(lang.get("button.update_device"), e -> handleUpdateDevice());
-        updateMultiButton = createActionButton(lang.get("button.update_multi"), e -> handleUpdateMulti());
-        updateAllButton = createActionButton(lang.get("button.get_startup_config"), e -> handleGetStartupConfig());
-        connectButton = createActionButton(lang.get("button.connect"), e -> handleConnectToDevice());
+        downloadSCButton = createActionButton(lang.get("button.get_startup_config"), e -> handleGetStartupConfig());
 
-        bottomPanel.add(updateDeviceButton);
-        bottomPanel.add(updateMultiButton);
-        bottomPanel.add(updateAllButton);
-        bottomPanel.add(connectButton);
+        bottomPanel.add(downloadSCButton);
 
         add(bottomPanel, BorderLayout.SOUTH);
     }
@@ -924,31 +894,6 @@ public class MainWindow extends JFrame {
     }
 
     /**
-     * Handles the update device button click.
-     */
-    private void handleUpdateDevice() {
-        int selectedRow = devicesTable.getSelectedRow();
-
-        if (selectedRow >= 0 && selectedRow < discoveredDevices.size()) {
-            PlanetSwitchDevice device = discoveredDevices.get(devicesTable.convertRowIndexToModel(selectedRow));
-            if (eventListener != null) {
-                eventListener.onUpdateDeviceClicked(device);
-            }
-        }
-    }
-
-    /**
-     * Handles the update multi button click.
-     */
-    private void handleUpdateMulti() {
-        List<PlanetSwitchDevice> selectedDevices = getSelectedDevices();
-
-        if (!selectedDevices.isEmpty() && eventListener != null) {
-            eventListener.onUpdateMultiClicked(selectedDevices);
-        }
-    }
-
-    /**
      * Handles the update all button click.
      */
     private void handleGetStartupConfig() {
@@ -958,20 +903,6 @@ public class MainWindow extends JFrame {
             PlanetSwitchDevice device = discoveredDevices.get(devicesTable.convertRowIndexToModel(selectedRow));
             if (eventListener != null) {
                 eventListener.onGetStartupConfigClicked(device);
-            }
-        }
-    }
-
-    /**
-     * Handles the connect to device button click.
-     */
-    private void handleConnectToDevice() {
-        int selectedRow = devicesTable.getSelectedRow();
-
-        if (selectedRow >= 0 && selectedRow < discoveredDevices.size()) {
-            PlanetSwitchDevice device = discoveredDevices.get(devicesTable.convertRowIndexToModel(selectedRow));
-            if (eventListener != null) {
-                eventListener.onConnectToDeviceClicked(device);
             }
         }
     }
@@ -1127,21 +1058,6 @@ public class MainWindow extends JFrame {
     }
 
     /**
-     * Returns the list of selected devices.
-     */
-    private List<PlanetSwitchDevice> getSelectedDevices() {
-        List<PlanetSwitchDevice> selected = new ArrayList<>();
-
-        for (int row : devicesTable.getSelectedRows()) {
-            if (row >= 0 && row < discoveredDevices.size()) {
-                selected.add(discoveredDevices.get(devicesTable.convertRowIndexToModel(row)));
-            }
-        }
-
-        return selected;
-    }
-
-    /**
      * Returns the column index for a protocol name.
      */
     private int getProtocolColumnIndex(String protocol) {
@@ -1211,15 +1127,7 @@ public class MainWindow extends JFrame {
      * Updates the enabled state of action buttons based on selection.
      */
     private void updateButtonStates() {
-        int selectedCount = devicesTable.getSelectedRowCount();
-        boolean hasSelection = selectedCount > 0;
-        boolean multiSelection = selectedCount > 1;
-        boolean hasDevices = !discoveredDevices.isEmpty();
-
-        updateDeviceButton.setEnabled(hasSelection && selectedCount == 1);
-        updateMultiButton.setEnabled(multiSelection);
-        updateAllButton.setEnabled(hasDevices);
-        connectButton.setEnabled(hasSelection && selectedCount == 1);
+        downloadSCButton.setEnabled(devicesTable.getSelectedRowCount() == 1); // Enabling if ONE device is selected
     }
 
     /**
