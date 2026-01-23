@@ -13,6 +13,10 @@ import javax.swing.border.EmptyBorder;
 import javax.swing.table.*;
 import java.awt.*;
 
+import java.awt.event.AWTEventListener;
+import java.awt.event.FocusAdapter;
+import java.awt.event.FocusEvent;
+import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -73,6 +77,8 @@ public class MainWindow extends JFrame {
 
     private final LanguageManager lang = LanguageManager.getInstance();
 
+    private AWTEventListener listener;
+
     private final Map<String, Map<String, Boolean>> protocolStatusCache = new HashMap<>();
     private final Map<String, Integer> securityStatusCache = new HashMap<>();
 
@@ -86,6 +92,7 @@ public class MainWindow extends JFrame {
 
     // Action buttons
     private JButton downloadSCButton;
+    private JButton getAllSCButton;
     private JButton discoverButton;
     private JButton refreshAdaptersButton;
 
@@ -120,11 +127,18 @@ public class MainWindow extends JFrame {
         void onDiscoverClicked(NetworkInterfaceCustom selectedAdapter);
 
         /**
-         * Called when the update-all button is clicked.
+         * Called when the get config button is clicked.
          *
-         * @param device all discovered devices
+         * @param device the device to get startup config for
          */
         void onGetStartupConfigClicked(PlanetSwitchDevice device);
+
+        /**
+         * Called when the get all configs button is clicked.
+         *
+         * @param devices the list of devices to get startup configs for
+         */
+        void onGetAllConfigsClicked(List<PlanetSwitchDevice> devices);
 
         /**
          * Called when the export menu item is clicked.
@@ -411,15 +425,31 @@ public class MainWindow extends JFrame {
     }
 
     /**
-     * Sets up the window close listener to save state.
+     * Sets up the window close listener to save state and clean up resources.
      */
     private void setupWindowListener() {
         addWindowListener(new java.awt.event.WindowAdapter() {
             @Override
             public void windowClosing(java.awt.event.WindowEvent windowEvent) {
                 saveWindowState();
+                cleanup();
             }
         });
+    }
+
+    /**
+     * Cleans up resources to prevent memory leaks.
+     * <p>
+     * Removes the AWTEventListener to ensure proper garbage collection
+     * of this window and its components.
+     * </p>
+     */
+    private void cleanup() {
+        if (listener != null) {
+            Toolkit.getDefaultToolkit().removeAWTEventListener(listener);
+            listener = null;
+            logger.debug("AWTEventListener removed");
+        }
     }
 
     /**
@@ -791,10 +821,29 @@ public class MainWindow extends JFrame {
             }
         });
 
+        devicesTable.addFocusListener(new FocusAdapter() {
+            @Override
+            public void focusLost(FocusEvent e ){
+                devicesTable.clearSelection();
+                devicesTable.getSelectionModel().clearSelection();
+            }
+        });
+
         JTableHeader header = devicesTable.getTableHeader();
         header.setFont(FONT_TABLE);
         header.setBackground(COLOR_HEADER_BACKGROUND);
         header.setForeground(COLOR_HEADER_TEXT);
+
+        listener = event -> {
+            if (event instanceof MouseEvent && event.getID() == MouseEvent.MOUSE_CLICKED) {
+                Component source = (Component) event.getSource();
+                if (!SwingUtilities.isDescendingFrom(source, devicesTable)) {
+                    devicesTable.clearSelection();
+                }
+            }
+        };
+
+        Toolkit.getDefaultToolkit().addAWTEventListener(listener, AWTEvent.MOUSE_EVENT_MASK);
     }
 
     /**
@@ -827,8 +876,10 @@ public class MainWindow extends JFrame {
         bottomPanel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(224, 224, 224)));
 
         downloadSCButton = createActionButton(lang.get("button.get_startup_config"), e -> handleGetStartupConfig());
+        getAllSCButton = createActionButton(lang.get("button.get_all_config"), e -> handleGetAllConfigs());
 
         bottomPanel.add(downloadSCButton);
+        bottomPanel.add(getAllSCButton);
 
         add(bottomPanel, BorderLayout.SOUTH);
     }
@@ -894,7 +945,7 @@ public class MainWindow extends JFrame {
     }
 
     /**
-     * Handles the update all button click.
+     * Handles the get startup-config button.
      */
     private void handleGetStartupConfig() {
         int selectedRow = devicesTable.getSelectedRow();
@@ -904,6 +955,15 @@ public class MainWindow extends JFrame {
             if (eventListener != null) {
                 eventListener.onGetStartupConfigClicked(device);
             }
+        }
+    }
+
+    /**
+     * Handles the get all startup-config button.
+     */
+    private void handleGetAllConfigs(){
+        if (eventListener != null) {
+            eventListener.onGetAllConfigsClicked(discoveredDevices);
         }
     }
 
@@ -1126,8 +1186,11 @@ public class MainWindow extends JFrame {
     /**
      * Updates the enabled state of action buttons based on selection.
      */
-    private void updateButtonStates() {
-        downloadSCButton.setEnabled(devicesTable.getSelectedRowCount() == 1); // Enabling if ONE device is selected
+    public void updateButtonStates() {
+        SwingUtilities.invokeLater(() -> {
+            downloadSCButton.setEnabled(devicesTable.getSelectedRowCount() == 1); // Enabling if ONE device is selected
+            getAllSCButton.setEnabled(!discoveredDevices.isEmpty() && devicesTable.getSelectedRowCount() == 0);
+        });
     }
 
     /**
@@ -1169,5 +1232,18 @@ public class MainWindow extends JFrame {
                 lang.get("dialog.about_title"),
                 JOptionPane.INFORMATION_MESSAGE
         );
+    }
+
+    /**
+     * Overrides dispose to ensure proper cleanup of resources.
+     * <p>
+     * This method ensures the AWTEventListener is removed even if
+     * dispose() is called directly without triggering windowClosing.
+     * </p>
+     */
+    @Override
+    public void dispose() {
+        cleanup();
+        super.dispose();
     }
 }

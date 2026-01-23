@@ -176,6 +176,170 @@ public class MainController implements MainWindow.UIEventListener {
         downloadConfigInBackground(device, saveFile);
     }
 
+    @Override
+    public void onGetAllConfigsClicked(List<PlanetSwitchDevice> devices) {
+        logger.info("Get all configs requested for {} devices", devices.size());
+
+        if (devices.isEmpty()) {
+            view.showError(
+                    lang.get("error.no_devices_title"),
+                    lang.get("error.no_devices_message")
+            );
+            return;
+        }
+
+        List<PlanetSwitchDevice> validDevices = devices.stream()
+                .filter(device -> device.isSSHUp() &&
+                        device.getUsername() != null &&
+                        device.getPassword() != null)
+                .collect(Collectors.toList());
+
+        if (validDevices.isEmpty()) {
+            view.showError(
+                    lang.get("error.no_valid_devices_title"),
+                    lang.get("error.no_valid_devices_message")
+            );
+            return;
+        }
+
+        int skippedDevices = devices.size() - validDevices.size();
+        if (skippedDevices > 0) {
+            logger.warn("{} devices skipped due to missing SSH or credentials", skippedDevices);
+        }
+
+        File targetDirectory = selectOrCreateTargetDirectory();
+        if (targetDirectory == null) {
+            logger.info("Bulk config download cancelled by user");
+            return;
+        }
+
+        downloadAllConfigsInBackground(validDevices, targetDirectory);
+    }
+
+    /**
+     * Selects or creates the target directory for bulk config downloads.
+     * <p>
+     * If a default config path is set in preferences, uses it directly.
+     * Otherwise, prompts the user to select a directory.
+     * The final directory is timestamped with the current date and time.
+     * </p>
+     *
+     * @return the timestamped target directory, or null if cancelled
+     */
+    private File selectOrCreateTargetDirectory() {
+        String defaultConfigPath = PreferencesManager.getDefaultConfigPath();
+        File baseDirectory;
+
+        if (defaultConfigPath != null && !defaultConfigPath.isEmpty()) {
+            baseDirectory = new File(defaultConfigPath);
+            if (!baseDirectory.exists() || !baseDirectory.isDirectory()) {
+                logger.warn("Default config path is invalid: {}", defaultConfigPath);
+                baseDirectory = null;
+            }
+        } else {
+            baseDirectory = null;
+        }
+
+        if (baseDirectory == null) {
+            JFileChooser folderChooser = createFileChooser();
+            folderChooser.setDialogTitle(lang.get("info.select_config_folder_title"));
+            folderChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+
+            int result = folderChooser.showDialog(view, lang.get("button.select"));
+            if (result != JFileChooser.APPROVE_OPTION) {
+                return null;
+            }
+
+            baseDirectory = folderChooser.getSelectedFile();
+            PreferencesManager.saveDefaultConfigPath(baseDirectory.getAbsolutePath());
+        }
+
+        String timestamp = new java.text.SimpleDateFormat("ddMMyy_HHmmss").format(new java.util.Date());
+        String timestampedFolderName = baseDirectory.getName() + "\\Backup_" + timestamp;
+        File timestampedDirectory = new File(baseDirectory.getParent(), timestampedFolderName);
+
+        if (!timestampedDirectory.exists()) {
+            if (!timestampedDirectory.mkdirs()) {
+                logger.error("Failed to create timestamped directory: {}", timestampedDirectory);
+                view.showError(
+                        lang.get("error.directory_creation_title"),
+                        lang.get("error.directory_creation_message", timestampedDirectory.getAbsolutePath())
+                );
+                return null;
+            }
+        }
+
+        logger.info("Target directory created: {}", timestampedDirectory.getAbsolutePath());
+        return timestampedDirectory;
+    }
+
+    /**
+     * Downloads configurations for all devices in a background thread.
+     *
+     * @param devices the list of devices to download from
+     * @param targetDirectory the directory to save configs to
+     */
+    private void downloadAllConfigsInBackground(List<PlanetSwitchDevice> devices, File targetDirectory) {
+        view.setStatusMessage(lang.get("status.downloading_all_configs", devices.size()));
+
+        SwingWorker<Void, String> worker = new SwingWorker<>() {
+            private int successCount = 0;
+            private int failureCount = 0;
+
+            @Override
+            protected Void doInBackground() {
+                for (PlanetSwitchDevice device : devices) {
+                    try {
+                        String fileName = sanitizeFileName(device.getDeviceName(), device.getIpAddress()) + "_startup_config.cfg";
+                        File destination = new File(targetDirectory, fileName);
+
+                        publish(lang.get("status.downloading_device_config", device.getDeviceName()));
+
+                        configService.downloadConfig(device, SwitchConfigService.ConfigType.STARTUP, destination);
+
+                        successCount++;
+                        logger.info("Downloaded config for {} to {}", device.getDeviceName(), destination);
+
+                    } catch (Exception e) {
+                        failureCount++;
+                        logger.error("Failed to download config for {}", device.getDeviceName(), e);
+                    }
+                }
+                return null;
+            }
+
+            @Override
+            protected void process(List<String> chunks) {
+                if (!chunks.isEmpty()) {
+                    view.setStatusMessage(chunks.get(chunks.size() - 1));
+                }
+            }
+
+            @Override
+            protected void done() {
+                String summaryMessage = lang.get("info.bulk_download_summary", successCount, devices.size(), failureCount, targetDirectory.getAbsolutePath());
+
+                if (failureCount == 0) {
+                    view.showInfo(
+                            lang.get("info.bulk_download_success_title"),
+                            summaryMessage
+                    );
+                    view.setStatusMessage(lang.get("status.all_downloads_success"));
+                } else {
+                    view.showError(
+                            lang.get("error.bulk_download_partial_title"),
+                            summaryMessage
+                    );
+                    view.setStatusMessage(lang.get("status.downloads_completed_with_errors"));
+                }
+
+                logger.info("Bulk config download completed: {} success, {} failures", successCount, failureCount);
+            }
+        };
+
+        worker.execute();
+    }
+
     /**
      * Handles the export to CSV button click event.
      * <p>
@@ -505,6 +669,7 @@ public class MainController implements MainWindow.UIEventListener {
                 view.setAppState(APP_STATE.PROTOCOL_TEST_END);
                 view.setStatusMessage(lang.get("status.enrichment_complete", completedProtocolTests));
                 view.setAppState(APP_STATE.FINAL_STATE);
+                view.updateButtonStates();
             });
         }
     }
@@ -612,7 +777,7 @@ public class MainController implements MainWindow.UIEventListener {
             fileChooser.setCurrentDirectory(new File(lastPath));
         }
 
-        String defaultFileName = sanitizeFileName(device.getDeviceName()) + "_startup_config.cfg";
+        String defaultFileName = sanitizeFileName(device.getDeviceName(), device.getIpAddress()) + "_startup_config.cfg";
         fileChooser.setSelectedFile(new File(defaultFileName));
 
         int result = fileChooser.showSaveDialog(view);
@@ -698,10 +863,10 @@ public class MainController implements MainWindow.UIEventListener {
      * @param deviceName the device name to sanitize
      * @return sanitized filename
      */
-    private String sanitizeFileName(String deviceName) {
+    private String sanitizeFileName(String deviceName, String deviceIP) {
         if (deviceName == null || deviceName.isEmpty()) {
-            return "device";
+            return "unknown_device";
         }
-        return deviceName.replaceAll("[^a-zA-Z0-9._-]", "_");
+        return deviceName.concat("_").concat(deviceIP).replaceAll("[^a-zA-Z0-9.-]", "_").replace(".", "-");
     }
 }
