@@ -63,6 +63,7 @@ public class PreferencesManager {
     private static final int DEFAULT_TELNET_PORT = 23;
 
     private static final String KEY_LAST_EXPORT_PATH = "last.export.path";
+    private static final String KEY_DEFAULT_CONFIG_PATH = "default.config.path";
 
     public static String getLastExportPath() {
         return prefs.get(KEY_LAST_EXPORT_PATH, "");
@@ -71,6 +72,28 @@ public class PreferencesManager {
     public static void saveLastExportPath(String path) {
         prefs.put(KEY_LAST_EXPORT_PATH, path);
     }
+    /**
+     * Retrieves the default directory path for saving configuration files.
+     * <p>
+     * This path is used as the initial directory when opening file chooser
+     * dialogs for saving switch configuration files.
+     * </p>
+     *
+     * @return the default config path, or empty string if not set
+     */
+    public static String getDefaultConfigPath() {
+        return prefs.get(KEY_DEFAULT_CONFIG_PATH, "");
+    }
+
+    /**
+     * Saves the default directory path for configuration files.
+     *
+     * @param path the directory path
+     */
+    public static void saveDefaultConfigPath(String path) {
+        saveString(KEY_DEFAULT_CONFIG_PATH, path, "Default config path");
+    }
+
 
 
     /**

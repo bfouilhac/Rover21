@@ -66,6 +66,8 @@ public class PreferencesDialog extends JDialog {
     private JSpinner sshPortSpinner;
     private JSpinner telnetPortSpinner;
 
+    private JTextField defaultConfigPathField;
+
     private JTextField customUsernameField;
     private JTextField customPasswordField;
 
@@ -129,6 +131,8 @@ public class PreferencesDialog extends JDialog {
         mainPanel.add(createSnmpBlock());
         mainPanel.add(Box.createVerticalStrut(BLOCK_SPACING));
         mainPanel.add(createProtocolBlock());
+        mainPanel.add(Box.createVerticalStrut(BLOCK_SPACING));
+        mainPanel.add(createConfigFileBlock());
 
         JScrollPane scrollPane = new JScrollPane(mainPanel);
         scrollPane.setBorder(null);
@@ -427,6 +431,65 @@ public class PreferencesDialog extends JDialog {
         panel.add(viewButton, gbc);
     }
 
+
+    /**
+     * Creates the Configuration File block.
+     * <p>
+     * This block contains settings for the default directory path where
+     * configuration files are saved.
+     * </p>
+     *
+     * @return a JPanel containing the config file path settings
+     */
+    private JPanel createConfigFileBlock() {
+        JPanel panel = new JPanel(new GridBagLayout());
+        panel.setBorder(createTitledBorder(lang.get("preferences.block.config_file")));
+
+        GridBagConstraints gbc = createDefaultConstraints();
+
+        addConfigPathRow(panel, gbc);
+
+        return panel;
+    }
+
+    private void addConfigPathRow(JPanel panel, GridBagConstraints gbc) {
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        gbc.weightx = 0;
+        panel.add(new JLabel(lang.get("preferences.config_path")), gbc);
+
+        gbc.gridx = 1;
+        gbc.weightx = 1.0;
+        defaultConfigPathField = new JTextField();
+        defaultConfigPathField.setPreferredSize(new Dimension(TEXT_FIELD_WIDTH, FIELD_HEIGHT));
+        defaultConfigPathField.setEditable(false);
+        panel.add(defaultConfigPathField, gbc);
+
+        gbc.gridx = 2;
+        gbc.weightx = 0;
+        JButton browseButton = new JButton(lang.get("preferences.browse"));
+        browseButton.setPreferredSize(new Dimension(BUTTON_WIDTH, FIELD_HEIGHT));
+        browseButton.addActionListener(e -> browseForConfigPath());
+        panel.add(browseButton, gbc);
+    }
+
+    /**
+     * Opens a directory chooser dialog to select the default config path.
+     */
+    private void browseForConfigPath() {
+        JFileChooser chooser = new JFileChooser();
+        chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+        chooser.setDialogTitle(lang.get("preferences.select_config_directory"));
+
+        String currentPath = defaultConfigPathField.getText();
+        if (!currentPath.isEmpty()) {
+            chooser.setCurrentDirectory(new java.io.File(currentPath));
+        }
+
+        if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            defaultConfigPathField.setText(chooser.getSelectedFile().getAbsolutePath());
+        }
+    }
     /**
      * Creates the bottom button panel with OK and Cancel buttons.
      *
@@ -631,6 +694,8 @@ public class PreferencesDialog extends JDialog {
         sshPortSpinner.setValue(PreferencesManager.getSshPort());
         telnetPortSpinner.setValue(PreferencesManager.getTelnetPort());
 
+        defaultConfigPathField.setText(PreferencesManager.getDefaultConfigPath());
+
         toggleSnmpV3Fields();
 
         logger.debug("Preferences loaded into dialog");
@@ -658,6 +723,8 @@ public class PreferencesDialog extends JDialog {
 
         PreferencesManager.saveSshPort((Integer) sshPortSpinner.getValue());
         PreferencesManager.saveTelnetPort((Integer) telnetPortSpinner.getValue());
+
+        PreferencesManager.saveDefaultConfigPath(defaultConfigPathField.getText());
 
         logger.info("Preferences saved successfully");
     }
