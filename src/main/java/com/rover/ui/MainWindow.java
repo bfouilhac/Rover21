@@ -983,7 +983,7 @@ public class MainWindow extends JFrame {
             if (deviceCount == 0) {
                 statusLabel.setText(lang.get("status.completed_none"));
             } else {
-                String statusMsg = lang.get("status.completed_found", deviceCount);
+                String statusMsg = lang.get("status.enrichment_complete", deviceCount);
                 if (!duplicateMacs.isEmpty()) {
                     statusMsg += " " + lang.get("error.duplicate_message", duplicateMacs);
                 }

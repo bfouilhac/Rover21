@@ -18,9 +18,7 @@ import java.util.Objects;
 public class NetworkInterfaceCustom {
 
     /** Regular expression pattern for validating IPv4 addresses. */
-    public static final String IPV4_PATTERN =
-            "^((0|1\\d?\\d?|2[0-4]?\\d?|25[0-5]?|[3-9]\\d?)\\.){3}" +
-                    "(0|1\\d?\\d?|2[0-4]?\\d?|25[0-5]?|[3-9]\\d?)$";
+    public static final String IPV4_PATTERN = "^((0|1\\d?\\d?|2[0-4]?\\d?|25[0-5]?|[3-9]\\d?)\\.){3}(0|1\\d?\\d?|2[0-4]?\\d?|25[0-5]?|[3-9]\\d?)$";
 
     /** Prefix for loopback addresses (localhost). */
     private static final String LOOPBACK_PREFIX = "127.";
@@ -28,6 +26,7 @@ public class NetworkInterfaceCustom {
     private final String name;
     private final String displayName;
     private final String ipAddress;
+
     private boolean isUp;
     private boolean isLoopback;
 
@@ -38,9 +37,9 @@ public class NetworkInterfaceCustom {
      * These values can be modified using the setter methods.
      * </p>
      *
-     * @param name        the system name of the interface (e.g., "eth0", "wlan0")
+     * @param name the system name of the interface (e.g., "eth0", "wlan0")
      * @param displayName the human-readable display name (e.g., "Realtek PCIe Family Controller")
-     * @param ipAddress   the IPv4 address assigned to this interface (e.g., "192.168.1.100")
+     * @param ipAddress the IPv4 address assigned to this interface (e.g., "192.168.1.100")
      */
     public NetworkInterfaceCustom(String name, String displayName, String ipAddress) {
         this.name = name;

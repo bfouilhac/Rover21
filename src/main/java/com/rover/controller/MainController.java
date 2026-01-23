@@ -432,21 +432,15 @@ public class MainController implements MainWindow.UIEventListener {
                 try {
                     view.setScanningMode(false);
                     view.setAppState(APP_STATE.DISCOVERY_END);
+
                     List<PlanetSwitchDevice> devices = get();
-
                     processDiscoveryResults(devices);
-
                     logger.info("Discovery completed: {} device(s) found", devices.size());
 
-                    // Initialize protocol test tracking
-                    expectedProtocolTests = devices.size();
-
-                    // If no devices found, go directly to the final state
-                    if (devices.isEmpty()) {
+                    expectedProtocolTests = devices.size(); // Initialize protocol test tracking
+                    if (devices.isEmpty()) { // If no devices found, go directly to the final state
                         view.setAppState(APP_STATE.FINAL_STATE);
                     }
-                    // Otherwise, wait for protocol tests to complete
-                    // (FINAL_STATE will be set when all protocol tests are done)
 
                 } catch (Exception e) {
                     handleDiscoveryError(e);
