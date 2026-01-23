@@ -31,20 +31,24 @@ public class SwitchConfigService {
     private final SSHConnectionManager sshManager;
 
     /**
-     * Configuration type to download.
+     * Configuration type to download with fallback commands.
      */
     public enum ConfigType {
-        RUNNING("show running-config"),
-        STARTUP("more flash:startup-config");
+        RUNNING(new String[]{"show running-config"}),
+        STARTUP(new String[]{"more flash:startup-config", "show startup-config"});
 
-        private final String command;
+        private final String[] commands;
 
-        ConfigType(String command) {
-            this.command = command;
+        ConfigType(String[] commands) {
+            this.commands = commands;
         }
 
-        public String getCommand() {
-            return command;
+        public String[] getCommands() {
+            return commands;
+        }
+
+        public String getPrimaryCommand() {
+            return commands[0];
         }
     }
 
@@ -120,19 +124,43 @@ public class SwitchConfigService {
 
             disablePagination(in, out);
 
-            logger.info("Executing command: {}", configType.getCommand());
+            String cleanedConfig = null;
+            String successfulCommand = null;
 
-            String rawOutput = executeCommand(in, out, configType.getCommand());
+            for (String command : configType.getCommands()) {
+                logger.info("Attempting command: {}", command);
 
-            if (rawOutput == null || rawOutput.isEmpty()) {
-                throw new IOException("No configuration data received from switch");
+                String rawOutput = executeCommand(in, out, command);
+
+                if (isCommandFailed(rawOutput)) {
+                    logger.warn("Command '{}' failed or returned error, trying next fallback", command);
+                    continue;
+                }
+
+                if (rawOutput.isEmpty()) {
+                    logger.warn("Command '{}' returned empty output, trying next fallback", command);
+                    continue;
+                }
+
+                cleanedConfig = extractConfig(rawOutput, command);
+
+                if (!cleanedConfig.isEmpty()) {
+                    successfulCommand = command;
+                    logger.info("Successfully retrieved config using command: {}", command);
+                    break;
+                }
             }
 
-            String cleanedConfig = extractConfig(rawOutput, configType.getCommand());
+            if (cleanedConfig == null || cleanedConfig.isEmpty()) {
+                throw new IOException("Failed to retrieve configuration with any available command");
+            }
 
             saveConfigToFile(cleanedConfig, destination);
 
-            logger.info("Config saved to {} ({} lines)", destination.getAbsolutePath(), cleanedConfig.split("\n").length);
+            logger.info("Config saved to {} ({} lines) using command '{}'",
+                    destination.getAbsolutePath(),
+                    cleanedConfig.split("\n").length,
+                    successfulCommand);
 
         } catch (JSchException e) {
             throw new IOException("SSH connection failed: " + e.getMessage(), e);
@@ -238,8 +266,7 @@ public class SwitchConfigService {
                     consecutiveEmptyReads = 0;
 
                     String currentOutput = output.toString();
-                    if (currentOutput.contains("end") &&
-                            (currentOutput.contains("#") || currentOutput.contains(">"))) {
+                    if (currentOutput.contains("end") && (currentOutput.contains("#") || currentOutput.contains(">"))) {
                         logger.debug("Detected end of configuration");
                         break;
                     }
@@ -262,6 +289,22 @@ public class SwitchConfigService {
 
         logger.info("Read complete, received {} characters", output.length());
         return output.toString();
+    }
+
+    /**
+     * Checks if a command failed based on output content.
+     *
+     * @param output command output
+     * @return true if the command failed
+     */
+    private boolean isCommandFailed(String output) {
+        String lowerOutput = output.toLowerCase();
+        return lowerOutput.contains("unknown command") ||
+                lowerOutput.contains("invalid command") ||
+                lowerOutput.contains("command not found") ||
+                lowerOutput.contains("unrecognized command") ||
+                lowerOutput.contains("% invalid") ||
+                lowerOutput.contains("error:");
     }
 
     /**
