@@ -93,8 +93,7 @@ public class PlanetDiscoveryService {
             long startTime = System.currentTimeMillis();
             logger.info("Listening for responses on port {} for {} ms", responsePort, socketTimeout);
 
-            listenForResponses(receiveSocket, socketTimeout, startTime, devices, discoveredMacs,
-                    discoveredIps, callback, snmpExecutor, protocolExecutor);
+            listenForResponses(receiveSocket, socketTimeout, startTime, devices, discoveredMacs, discoveredIps, callback, snmpExecutor, protocolExecutor);
 
             logger.info("Discovery complete. Found {} PLANET device(s)", devices.size());
 
@@ -166,7 +165,8 @@ public class PlanetDiscoveryService {
      * @return the configured DatagramSocket, or null if binding fails
      */
     private DatagramSocket createReceiveSocket(int port, int timeout) {
-        try (DatagramSocket socket = new DatagramSocket(port)) {
+        try {
+            DatagramSocket socket = new DatagramSocket(port);
             socket.setSoTimeout(timeout);
             socket.setBroadcast(true);
             logger.info("Receive socket bound to port: {}", port);
@@ -190,12 +190,14 @@ public class PlanetDiscoveryService {
      * @throws SocketException if socket creation fails
      */
     private DatagramSocket createSendSocket(String localAddress, int port) throws SocketException {
-        try (DatagramSocket socket = new DatagramSocket(new InetSocketAddress(InetAddress.getByName(localAddress), port))){
+        try {
+            DatagramSocket socket = new DatagramSocket(new InetSocketAddress(InetAddress.getByName(localAddress), port));
             socket.setBroadcast(true);
             logger.info("Send socket created on port: {}", socket.getLocalPort());
             return socket;
         } catch (UnknownHostException e) {
-            logger.error("Invalid local address: {}", localAddress);
+            logger.error("Invalid local address {}", localAddress);
+            logger.debug("Exception: {}", e.getMessage());
             throw new SocketException("Invalid local address: " + localAddress);
         }
     }
@@ -262,6 +264,7 @@ public class PlanetDiscoveryService {
                 processReceivedPacket(packet, devices, discoveredMacs, discoveredIps, callback, snmpExecutor, protocolExecutor);
 
             } catch (SocketTimeoutException e) {
+                logger.error("Timeout waiting for response packet: {}", e.getMessage());
                 break; // timeout reached, exit loop
             } catch (IOException e) {
                 logger.warn("Error receiving packet: {}", e.getMessage());

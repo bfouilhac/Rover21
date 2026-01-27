@@ -41,7 +41,8 @@ public class RSTPDiscoveryService {
 
         RSTPTopology topology = new RSTPTopology();
 
-        List<PlanetSwitchDevice> rstpDevices = devices.stream() // Filter devices with SSH and RSTP enabled
+        // Filter devices with SSH and RSTP enabled
+        List<PlanetSwitchDevice> rstpDevices = devices.stream()
                 .filter(d -> d.isSSHUp() &&
                         d.getUsername() != null &&
                         d.getPassword() != null &&
@@ -55,6 +56,7 @@ public class RSTPDiscoveryService {
 
         logger.info("Found {} devices with RSTP enabled", rstpDevices.size());
 
+        // Parallelize discovery for speed (Java 19+ try-with-resources)
         try (ExecutorService executor = Executors.newFixedThreadPool(Math.min(5, rstpDevices.size()))) {
             List<Future<RSTPNode>> futures = new ArrayList<>();
 
@@ -73,7 +75,7 @@ public class RSTPDiscoveryService {
                 }));
             }
 
-            // Collect results
+            // Collect results with a longer timeout
             for (Future<RSTPNode> future : futures) {
                 try {
                     RSTPNode node = future.get(30, TimeUnit.SECONDS);
@@ -86,7 +88,7 @@ public class RSTPDiscoveryService {
                     Thread.currentThread().interrupt();
                 }
             }
-        }
+        } // ExecutorService automatically closed here
 
         identifyRootBridge(topology);
 

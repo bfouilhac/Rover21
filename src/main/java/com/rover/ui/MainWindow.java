@@ -418,7 +418,7 @@ public class MainWindow extends JFrame {
     private void initializeFrame() {
         setTitle(lang.get("window.title"));
         setSize(PreferencesManager.getWindowWidth(DEFAULT_WINDOW_WIDTH), PreferencesManager.getWindowHeight(DEFAULT_WINDOW_HEIGHT));
-        setDefaultCloseOperation(javax.swing.WindowConstants.DO_NOTHING_ON_CLOSE);
+        setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
     }
 
