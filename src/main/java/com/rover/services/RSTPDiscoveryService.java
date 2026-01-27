@@ -1,13 +1,18 @@
 package com.rover.services;
 
 import com.rover.model.PlanetSwitchDevice;
-import com.rover.model.rstp.*;
+import com.rover.model.rstp.RSTPNode;
+import com.rover.model.rstp.RSTPTopology;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Service for discovering and building RSTP topology via SSH.

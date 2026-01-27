@@ -1,7 +1,9 @@
 package com.rover.ui;
 
 import com.rover.model.PlanetSwitchDevice;
-import com.rover.model.rstp.*;
+import com.rover.model.rstp.RSTPNode;
+import com.rover.model.rstp.RSTPTopology;
+import com.rover.model.rstp.RSTPVersion;
 import com.rover.services.RSTPDiscoveryService;
 import com.rover.utils.LanguageManager;
 import org.slf4j.Logger;
@@ -29,6 +31,9 @@ public class RSTPTopologyDialog extends JDialog {
     private static final Color COLOR_TABLE_GRID = new Color(220, 220, 220);
     private static final Color COLOR_HEADER_BACKGROUND = new Color(245, 245, 245);
     private static final Color COLOR_HEADER_TEXT = new Color(60, 60, 60);
+    private static final Color COLOR_STATUS_BACKGROUND = new Color(227, 242, 253);
+    private static final Color COLOR_STATUS_BORDER = new Color(144, 202, 249);
+    private static final Color COLOR_STATUS_TEXT = new Color(25, 118, 210);
 
     // Column indices
     private static final int COL_DEVICE_NAME = 0;
@@ -46,9 +51,13 @@ public class RSTPTopologyDialog extends JDialog {
     private JTable rstpTable;
     private DefaultTableModel tableModel;
     private RSTPTopology topology;
+    private JLabel statusLabel;
 
     public RSTPTopologyDialog(JFrame parent, List<PlanetSwitchDevice> devices) {
-        super(parent, "RSTP Topology Information", false);
+        setTitle(lang.get("topology.window_title"));
+        setDefaultCloseOperation(DISPOSE_ON_CLOSE);
+        setModalityType(ModalityType.APPLICATION_MODAL);
+
         this.discoveryService = new RSTPDiscoveryService();
 
         setSize(DIALOG_WIDTH, DIALOG_HEIGHT);
@@ -58,7 +67,7 @@ public class RSTPTopologyDialog extends JDialog {
         initComponents();
         discoverAndDisplay(devices);
 
-        logger.info("RstpTopologyDialog opened");
+        logger.info("RSTPTopologyDialog opened");
     }
 
     /**
@@ -67,11 +76,35 @@ public class RSTPTopologyDialog extends JDialog {
     private void initComponents() {
         createTable();
 
+        JPanel centerPanel = new JPanel(new BorderLayout());
+        centerPanel.add(createStatusBar(), BorderLayout.NORTH);
+
         JScrollPane scrollPane = new JScrollPane(rstpTable);
         scrollPane.setBorder(BorderFactory.createEmptyBorder());
+        centerPanel.add(scrollPane, BorderLayout.CENTER);
 
-        add(scrollPane, BorderLayout.CENTER);
+        add(centerPanel, BorderLayout.CENTER);
         add(createButtonPanel(), BorderLayout.SOUTH);
+    }
+
+    /**
+     * Creates the status bar.
+     */
+    private JPanel createStatusBar() {
+        JPanel statusBar = new JPanel(new BorderLayout(15, 0));
+        statusBar.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(COLOR_STATUS_BORDER, 1),
+                BorderFactory.createEmptyBorder(8, 12, 8, 12)
+        ));
+        statusBar.setBackground(COLOR_STATUS_BACKGROUND);
+
+        statusLabel = new JLabel(lang.get("status.ready"));
+        statusLabel.setFont(FONT_TABLE);
+        statusLabel.setForeground(COLOR_STATUS_TEXT);
+
+        statusBar.add(statusLabel, BorderLayout.WEST);
+
+        return statusBar;
     }
 
     /**
@@ -158,13 +191,21 @@ public class RSTPTopologyDialog extends JDialog {
     }
 
     /**
-     * Creates button panel at bottom.
+     * Updates the status message (thread-safe).
+     *
+     * @param message the message to display
      */
+    private void updateStatus(String message) {
+        SwingUtilities.invokeLater(() -> statusLabel.setText(message));
+    }
     private JPanel createButtonPanel() {
         JPanel panel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 10));
 
-        JButton refreshButton = MainWindow.createActionButton(lang.get("button.refresh"), e -> refresh());
-        JButton closeButton = MainWindow.createActionButton(lang.get("button.close"), e -> dispose());
+        JButton refreshButton = new JButton(lang.get("button.refresh"));
+        refreshButton.addActionListener(e -> refresh());
+
+        JButton closeButton = new JButton(lang.get("button.close"));
+        closeButton.addActionListener(e -> dispose());
 
         panel.add(refreshButton);
         panel.add(closeButton);
@@ -176,11 +217,13 @@ public class RSTPTopologyDialog extends JDialog {
      * Discovers RSTP topology and displays in a table.
      */
     private void discoverAndDisplay(List<PlanetSwitchDevice> devices) {
+        // First, display basic info for all SSH-capable devices
+        updateStatus(lang.get("status.topology_loading"));
         displayBasicInfo(devices);
 
-        setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
+        updateStatus(lang.get("status.topology_discovering"));
 
-        SwingWorker<RSTPTopology, Void> worker = new SwingWorker<>() {
+        SwingWorker<RSTPTopology, String> worker = new SwingWorker<>() {
             @Override
             protected RSTPTopology doInBackground() {
                 return discoveryService.discoverTopology(devices);
@@ -192,15 +235,16 @@ public class RSTPTopologyDialog extends JDialog {
                     topology = get();
 
                     if (topology.isValid()) {
+                        updateStatus(lang.get("status.topology_update_rstp_information"));
                         updateWithRstpInfo();
+                        updateStatus(lang.get("status.topology_ready", topology.getNodeCount()));
                     } else {
                         logger.warn("No RSTP-enabled devices found, showing basic info only");
+                        updateStatus(lang.get("status.topology_ready_empty"));
                     }
                 } catch (Exception e) {
                     logger.error("Failed to discover topology", e);
-                    showError("Failed to discover RSTP topology: " + e.getMessage());
-                } finally {
-                    setCursor(Cursor.getDefaultCursor());
+                    showError(lang.get("error.topology_discover", e.getMessage()));
                 }
             }
         };
