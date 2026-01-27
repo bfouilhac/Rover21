@@ -270,7 +270,7 @@ public class SNMPService {
      */
     private CommunityTarget createCommunityTarget(String ipAddress, String community) {
         Address targetAddress = GenericAddress.parse("udp:" + ipAddress + "/" + PreferencesManager.getPortSNMP());
-        CommunityTarget target = new CommunityTarget();
+        CommunityTarget<Address> target = new CommunityTarget<>();
 
         String communityToUse = community.equals(DEFAULT_COMMUNITY)
                 ? PreferencesManager.getSnmpCommunity()
@@ -303,7 +303,7 @@ public class SNMPService {
      */
     private UserTarget createUserTarget(String ipAddress) {
         Address targetAddress = GenericAddress.parse("udp:" + ipAddress + "/" + PreferencesManager.getPortSNMP());
-        UserTarget target = new UserTarget();
+        UserTarget<Address> target = new UserTarget<>();
 
         target.setAddress(targetAddress);
         target.setRetries(PreferencesManager.getSNMPRetries());
@@ -371,7 +371,7 @@ public class SNMPService {
      * @param elapsedTime the query time (for logging)
      * @return the value as a string, or null if extraction fails
      */
-    private String extractValueFromResponse(ResponseEvent event, String oid, long elapsedTime) {
+    private String extractValueFromResponse(ResponseEvent<Address> event, String oid, long elapsedTime) {
         if (event != null && event.getResponse() != null) {
             PDU response = event.getResponse();
 
@@ -473,7 +473,7 @@ public class SNMPService {
      * @param uptime the uptime string containing "day" or "days"
      * @return the number of days
      */
-    private int extractDaysFromUptime(String uptime) {return Integer.parseInt(uptime.split("day")[0].trim().replaceAll("[^0-9]", ""));}
+    private int extractDaysFromUptime(String uptime) {return Integer.parseInt(uptime.split("day")[0].trim().replace("\\D", ""));}
 
     /**
      * Extracts the time part (HH:MM:SS) from an uptime string.

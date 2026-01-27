@@ -73,9 +73,9 @@ public class MainWindow extends JFrame {
     private static final int COL_HTTP = 12;
     private static final int COL_HTTPS = 13;
 
-    private final LanguageManager lang = LanguageManager.getInstance();
+    private final transient LanguageManager lang = LanguageManager.getInstance();
 
-    private AWTEventListener listener;
+    private transient AWTEventListener listener;
 
     private final Map<String, Map<String, Boolean>> protocolStatusCache = new HashMap<>();
     private final Map<String, Integer> securityStatusCache = new HashMap<>();
@@ -96,10 +96,10 @@ public class MainWindow extends JFrame {
     private JButton showRSTPTopologyButton;
 
     // Data lists
-    private List<PlanetSwitchDevice> discoveredDevices;
-    private List<NetworkInterfaceCustom> availableAdapters;
+    private transient List<PlanetSwitchDevice> discoveredDevices;
+    private transient List<NetworkInterfaceCustom> availableAdapters;
 
-    private UIEventListener eventListener; // Listener for UI events (controller).
+    private transient UIEventListener eventListener; // Listener for UI events (controller).
 
     private int lastDiscoveredCount = 0;
     private String lastDuplicateMacs = "";
@@ -418,7 +418,7 @@ public class MainWindow extends JFrame {
     private void initializeFrame() {
         setTitle(lang.get("window.title"));
         setSize(PreferencesManager.getWindowWidth(DEFAULT_WINDOW_WIDTH), PreferencesManager.getWindowHeight(DEFAULT_WINDOW_HEIGHT));
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setDefaultCloseOperation(javax.swing.WindowConstants.DO_NOTHING_ON_CLOSE);
         setLayout(new BorderLayout());
     }
 

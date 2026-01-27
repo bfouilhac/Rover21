@@ -30,7 +30,6 @@ public class RSTPPort {
 
     @Override
     public String toString() {
-        return String.format("Port %d: %s (%s) - Cost: %d",
-                portNumber, state, role, pathCost);
+        return String.format("Port %d: %s (%s) - Cost: %d", portNumber, state, role, pathCost);
     }
 }

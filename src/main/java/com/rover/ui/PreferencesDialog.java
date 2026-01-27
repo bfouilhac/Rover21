@@ -47,7 +47,7 @@ public class PreferencesDialog extends JDialog {
     private static final int MIN_PORT = 1;
     private static final int MAX_PORT = 65535;
 
-    private final LanguageManager lang = LanguageManager.getInstance();
+    private final transient LanguageManager lang = LanguageManager.getInstance();
 
     private JSpinner discoveryTimeoutSpinner;
     private JTextField discoverySendPortField;

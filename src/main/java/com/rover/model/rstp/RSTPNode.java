@@ -80,9 +80,7 @@ public class RSTPNode {
 
     public void setRootBridge(boolean rootBridge) {isRootBridge = rootBridge;}
 
-    public RSTPVersion getVersion() {
-        return version;
-    }
+    public RSTPVersion getVersion() {return version;}
 
     public void setVersion(RSTPVersion version) {
         this.version = version;
@@ -98,8 +96,7 @@ public class RSTPNode {
 
     @Override
     public String toString() {
-        return String.format("RstpNode{device=%s, bridgeId=%s, isRoot=%b, ports=%d}",
-                device.getDeviceName(), bridgeId, isRootBridge, ports.size());
+        return String.format("RstpNode{device=%s, bridgeId=%s, isRoot=%b, ports=%d}", device.getDeviceName(), bridgeId, isRootBridge, ports.size());
     }
 
     @Override

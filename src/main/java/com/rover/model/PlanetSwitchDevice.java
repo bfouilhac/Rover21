@@ -312,9 +312,6 @@ public class PlanetSwitchDevice {
      */
     public void setSNMPUp(boolean isSNMPUp) {this.isSNMPUp = isSNMPUp;}
 
-
-
-
     /**
      * Returns a string representation of this device with key information.
      * <p>
@@ -370,7 +367,5 @@ public class PlanetSwitchDevice {
      * @see #equals(Object)
      */
     @Override
-    public int hashCode() {
-        return Objects.hash(macAddress);
-    }
+    public int hashCode() {return Objects.hash(macAddress);}
 }

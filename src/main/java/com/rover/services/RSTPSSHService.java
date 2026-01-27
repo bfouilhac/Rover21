@@ -71,8 +71,8 @@ public class RSTPSSHService{
             logger.info("Device {} RSTP enabled: {}", device.getIpAddress(), enabled);
             return enabled;
         } catch (Exception e) {
-            logger.error("Failed to check RSTP status for {} - {}: {}",
-                    device.getIpAddress(), e.getClass().getSimpleName(), e.getMessage());
+            logger.error("Failed to check RSTP status for {} - {}: {}", device.getIpAddress(), e.getClass().getSimpleName(), e.getMessage());
+            Thread.currentThread().interrupt();
             return false;
         }
     }
@@ -139,16 +139,14 @@ public class RSTPSSHService{
             parseRstpVersion(summaryOutput, node);
             parseSpanningTreeInfo(detailOutput, node);
 
-            logger.info("Successfully retrieved RSTP info for {}: version={}, cost={}, ports={}",
-                    device.getDeviceName(), node.getVersion(), node.getRootCost(), node.getPorts().size());
+            logger.info("Successfully retrieved RSTP info for {}: version={}, cost={}, ports={}", device.getDeviceName(), node.getVersion(), node.getRootCost(), node.getPorts().size());
 
         } catch (JSchException e) {
             logger.error("SSH connection failed for {}: {}", device.getIpAddress(), e.getMessage());
-            throw new IOException("SSH connection failed: " + e.getMessage(), e);
-        } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        } catch (InterruptedException e) {
             logger.error("Operation interrupted for {}", device.getIpAddress());
-            throw new IOException("Operation interrupted", e);
+            Thread.currentThread().interrupt();
         } finally {
             sshManager.disconnect(channel, session);
         }
@@ -159,8 +157,7 @@ public class RSTPSSHService{
     /**
      * Executes a command in an already established SSH session.
      */
-    private String executeCommandInSession(InputStream in, OutputStream out, String command)
-            throws IOException, InterruptedException {
+    private String executeCommandInSession(InputStream in, OutputStream out, String command) throws IOException, InterruptedException {
 
         sendLine(out, command);
         Thread.sleep(AFTER_COMMAND_WAIT_MS);

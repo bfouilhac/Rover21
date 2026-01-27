@@ -14,6 +14,7 @@ import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import java.io.File;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 /**
@@ -191,7 +192,7 @@ public class MainController implements MainWindow.UIEventListener {
                 .filter(device -> device.isSSHUp() &&
                         device.getUsername() != null &&
                         device.getPassword() != null)
-                .collect(Collectors.toList());
+                .toList();
 
         if (validDevices.isEmpty()) {
             view.showError(
@@ -223,7 +224,7 @@ public class MainController implements MainWindow.UIEventListener {
      * The final directory is timestamped with the current date and time.
      * </p>
      *
-     * @return the timestamped target directory, or null if cancelled
+     * @return the timestamped target directory, or null if canceled
      */
     private File selectOrCreateTargetDirectory() {
         String defaultConfigPath = PreferencesManager.getDefaultConfigPath();
@@ -257,15 +258,13 @@ public class MainController implements MainWindow.UIEventListener {
         String timestampedFolderName = baseDirectory.getName() + "\\Backup_" + timestamp;
         File timestampedDirectory = new File(baseDirectory.getParent(), timestampedFolderName);
 
-        if (!timestampedDirectory.exists()) {
-            if (!timestampedDirectory.mkdirs()) {
-                logger.error("Failed to create timestamped directory: {}", timestampedDirectory);
-                view.showError(
-                        lang.get("error.directory_creation_title"),
-                        lang.get("error.directory_creation_message", timestampedDirectory.getAbsolutePath())
-                );
-                return null;
-            }
+        if (!timestampedDirectory.exists() && !timestampedDirectory.mkdirs()) {
+            logger.error("Failed to create timestamped directory: {}", timestampedDirectory);
+            view.showError(
+                    lang.get("error.directory_creation_title"),
+                    lang.get("error.directory_creation_message", timestampedDirectory.getAbsolutePath())
+            );
+            return null;
         }
 
         logger.info("Target directory created: {}", timestampedDirectory.getAbsolutePath());
@@ -605,8 +604,12 @@ public class MainController implements MainWindow.UIEventListener {
                         view.setAppState(APP_STATE.FINAL_STATE);
                     }
 
-                } catch (Exception e) {
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
                     handleDiscoveryError(e);
+                } catch (ExecutionException e) {
+                    Thread.currentThread().interrupt();
+                    logger.error("Error during discovery", e);
                 }
             }
 
@@ -691,7 +694,8 @@ public class MainController implements MainWindow.UIEventListener {
                     updateTimeRemaining(remainingSeconds);
                     Thread.sleep(COUNTDOWN_INTERVAL_MS);
                 } catch (InterruptedException e) {
-                    break; // exit loop if interrupted
+                    Thread.currentThread().interrupt();
+                    break;
                 }
             }
         });
@@ -733,7 +737,7 @@ public class MainController implements MainWindow.UIEventListener {
                 .values().stream()
                 .filter(group -> group.size() > 1)
                 .flatMap(List::stream)
-                .collect(Collectors.toList());
+                .toList();
     }
 
     /**
@@ -839,7 +843,8 @@ public class MainController implements MainWindow.UIEventListener {
                     );
                     view.setStatusMessage(lang.get("status.download_success"));
                     logger.info("Config downloaded successfully to {}", destination.getAbsolutePath());
-                } catch (Exception e) {
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
                     logger.error("Failed to download config from {}", device.getIpAddress(), e);
 
                     Throwable cause = e.getCause() != null ? e.getCause() : e;
@@ -849,6 +854,9 @@ public class MainController implements MainWindow.UIEventListener {
                             lang.get("error.config_download_title"),
                             lang.get("error.config_download_message", device.getIpAddress(), errorMsg)
                     );
+                } catch (ExecutionException e) {
+                    logger.error("Failed to download config from {}", device.getIpAddress(), e);
+                    Thread.currentThread().interrupt();
                 }
             }
         };

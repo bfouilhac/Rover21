@@ -47,7 +47,6 @@ public class ProtocolTestService {
     private static final String DEFAULT_PASSWORD = "admin";
     private static final String MAC_PASSWORD_PREFIX = "sw";
 
-    private static final int LOGIN_WAIT_INTERVAL = 50;
     private static final int PROMPT_RESPONSE_DELAY = 300;
 
     private final ProtocolTestResult result = new ProtocolTestResult();
@@ -98,7 +97,7 @@ public class ProtocolTestService {
         }
 
         try {
-            URL url = new URL("http://" + ipAddress);
+            URL url = new URI("http://" + ipAddress).toURL();
             HttpURLConnection connection = (HttpURLConnection) url.openConnection();
             connection.setConnectTimeout(HTTP_TIMEOUT);
             connection.setReadTimeout(HTTP_TIMEOUT);
@@ -111,6 +110,10 @@ public class ProtocolTestService {
             return responseCode > 0;
 
         } catch (IOException e) {
+            logger.error("HTTP connection failed for {}: {}", ipAddress, e.getMessage());
+            return false;
+        } catch (URISyntaxException e) {
+            logger.error("Invalid IP address syntax: {}", ipAddress);
             return false;
         }
     }
@@ -120,7 +123,7 @@ public class ProtocolTestService {
      */
     public boolean isHttpsAvailable(String ipAddress) {
         try {
-            URL url = new URL("https://" + ipAddress);
+            URL url = new URI("https://" + ipAddress).toURL();
             HttpsURLConnection connection = (HttpsURLConnection) url.openConnection();
             connection.setConnectTimeout(HTTP_TIMEOUT);
             connection.setReadTimeout(HTTP_TIMEOUT);
@@ -204,7 +207,7 @@ public class ProtocolTestService {
             }
         }
 
-        logger.info("Telnet SECURE on {}", ipAddress);
+        logger.info("Telnet custom cred SECURE on {}", ipAddress);
         return new SecurityTestResult(true, true);
     }
 
@@ -225,10 +228,7 @@ public class ProtocolTestService {
     }
 
     private boolean testTelnetLogin(String ipAddress, int port, String username, String password) {
-        Socket socket = null;
-
-        try {
-            socket = new Socket();
+        try (Socket socket = new Socket()) {
             socket.connect(new InetSocketAddress(ipAddress, port), PORT_CHECK_TIMEOUT);
             socket.setSoTimeout(PROMPT_RESPONSE_DELAY);
 
@@ -282,8 +282,6 @@ public class ProtocolTestService {
         } catch (Exception e) {
             logger.debug("Telnet login test failed for {}: {}", ipAddress, e.getMessage());
             return false;
-        } finally {
-            closeSocket(socket);
         }
     }
 
@@ -317,7 +315,7 @@ public class ProtocolTestService {
             }
         }
 
-        logger.info("SSH SECURE on {}", ipAddress);
+        logger.info("SSH custom cred SECURE on {}", ipAddress);
         return new SecurityTestResult(true, true);
     }
 
@@ -449,12 +447,10 @@ public class ProtocolTestService {
 
         if (isUsernamePrompt(response) || response.contains("password:")) {
             logger.warn("SSH authentication incomplete on {} - still asking for credentials", ipAddress);
-            return false;
         }
 
         if (usernamePromptCount > 0 || passwordPromptCount > 0) {
             logger.warn("SSH response unclear on {} after sending credentials", ipAddress);
-            return false;
         }
 
         logger.warn("SSH response unclear on {} - no prompts detected", ipAddress);
@@ -471,7 +467,6 @@ public class ProtocolTestService {
                     lowerMsg.contains("access denied") ||
                     lowerMsg.contains("authentication failed")) {
                 logger.debug("SSH authentication failed for {}: {}", ipAddress, errorMsg);
-                return false;
             }
         }
 
@@ -493,16 +488,32 @@ public class ProtocolTestService {
         return DEFAULT_PASSWORD;
     }
 
+    /**
+     * Creates an SSL context that trusts all certificates.
+     * <p>
+     * WARNING: This disables SSL certificate validation.
+     * This is required because PLANET switches use self-signed certificates (IStaX-Selfsigned).
+     * This should only be used on trusted private networks.
+     * </p>
+     *
+     * @return SSLContext configured to accept self-signed certificates
+     * @throws Exception if SSL context creation fails
+     */
+    @SuppressWarnings("java:S4830") // Intentionally trusting all certificates - switches use self-signed certs
     private SSLContext createTrustAllSslContext() throws Exception {
         TrustManager[] trustAllCerts = new TrustManager[]{
                 new X509TrustManager() {
                     public java.security.cert.X509Certificate[] getAcceptedIssuers() {
-                        return null;
+                         return new java.security.cert.X509Certificate[]{};
                     }
 
-                    public void checkClientTrusted(java.security.cert.X509Certificate[] certs, String authType) {}
+                    public void checkClientTrusted(java.security.cert.X509Certificate[] certs, String authType) {
+                        // No need of implementation on this one
+                    }
 
-                    public void checkServerTrusted(java.security.cert.X509Certificate[] certs, String authType) {}
+                    public void checkServerTrusted(java.security.cert.X509Certificate[] certs, String authType) {
+                        // No need of implementation on this one
+                    }
                 }
         };
 
@@ -559,14 +570,6 @@ public class ProtocolTestService {
         out.flush();
     }
 
-    private void closeSocket(Socket socket) {
-        if (socket != null && !socket.isClosed()) {
-            try {
-                socket.close();
-            } catch (IOException ignored) {}
-        }
-    }
-
     public record SecurityTestResult(boolean available, boolean secure) {}
 
     public static class ProtocolTestResult {
@@ -579,8 +582,6 @@ public class ProtocolTestService {
         private String username;
         private String password;
 
-        public ProtocolTestResult() {}
-
         public String getUsername() {
             return username;
         }
@@ -589,9 +590,7 @@ public class ProtocolTestService {
             this.username = username;
         }
 
-        public String getPassword() {
-            return password;
-        }
+        public String getPassword() {return password;}
 
         public void setPassword(String password) {
             this.password = password;

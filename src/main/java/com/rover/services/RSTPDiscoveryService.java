@@ -55,38 +55,38 @@ public class RSTPDiscoveryService {
 
         logger.info("Found {} devices with RSTP enabled", rstpDevices.size());
 
-        // Parallelize discovery for speed
-        ExecutorService executor = Executors.newFixedThreadPool(Math.min(5, rstpDevices.size()));
-        List<Future<RSTPNode>> futures = new ArrayList<>();
+        try (ExecutorService executor = Executors.newFixedThreadPool(Math.min(5, rstpDevices.size()))) {
+            List<Future<RSTPNode>> futures = new ArrayList<>();
 
-        for (PlanetSwitchDevice device : rstpDevices) {
-            futures.add(executor.submit(() -> {
+            for (PlanetSwitchDevice device : rstpDevices) {
+                futures.add(executor.submit(() -> {
+                    try {
+                        logger.info("Attempting SSH connection to {}", device.getIpAddress());
+                        RSTPNode node = sshService.getRstpInfo(device);
+                        logger.info("Successfully retrieved RSTP info from {}", device.getIpAddress());
+                        return node;
+                    } catch (IOException e) {
+                        logger.error("Failed to get RSTP info for {} ({}): {}",
+                                device.getDeviceName(), device.getIpAddress(), e.getMessage());
+                        return null;
+                    }
+                }));
+            }
+
+            // Collect results
+            for (Future<RSTPNode> future : futures) {
                 try {
-                    logger.info("Attempting SSH connection to {}", device.getIpAddress());
-                    RSTPNode node = sshService.getRstpInfo(device);
-                    logger.info("Successfully retrieved RSTP info from {}", device.getIpAddress());
-                    return node;
-                } catch (IOException e) {
-                    logger.error("Failed to get RSTP info for {} ({}): {}",
-                            device.getDeviceName(), device.getIpAddress(), e.getMessage());
-                    return null;
+                    RSTPNode node = future.get(30, TimeUnit.SECONDS);
+                    if (node != null) {
+                        topology.addNode(node);
+                        logger.debug("Added node: {}", node.getDeviceName());
+                    }
+                } catch (Exception e) {
+                    logger.error("Failed to get node", e);
+                    Thread.currentThread().interrupt();
                 }
-            }));
-        }
-
-        for (Future<RSTPNode> future : futures) { // Collect results with a longer timeout
-            try {
-                RSTPNode node = future.get(30, TimeUnit.SECONDS); // Increased from 10 to 30 seconds
-                if (node != null) {
-                    topology.addNode(node);
-                    logger.debug("Added node: {}", node.getDeviceName());
-                }
-            } catch (Exception e) {
-                logger.error("Failed to get node", e);
             }
         }
-
-        executor.shutdown();
 
         identifyRootBridge(topology);
 

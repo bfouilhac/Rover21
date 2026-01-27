@@ -46,10 +46,6 @@ public class SwitchConfigService {
         public String[] getCommands() {
             return commands;
         }
-
-        public String getPrimaryCommand() {
-            return commands[0];
-        }
     }
 
     public SwitchConfigService() {

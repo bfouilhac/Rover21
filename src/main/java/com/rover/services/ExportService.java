@@ -31,9 +31,8 @@ public class ExportService {
      *
      * @param devices the list of devices to export
      * @param file the target CSV file
-     * @throws IOException if an I/O error occurs during export
      */
-    public void exportToCSV(List<PlanetSwitchDevice> devices, File file) throws IOException {
+    public void exportToCSV(List<PlanetSwitchDevice> devices, File file){
         logger.info("Starting CSV export to: {}", file.getAbsolutePath());
 
         try (FileWriter writer = new FileWriter(file)) {
@@ -51,7 +50,7 @@ public class ExportService {
             logger.info("CSV export completed successfully: {} devices exported", devices.size());
         } catch (IOException e) {
             logger.error("Error during CSV export", e);
-            throw e;
+            Thread.currentThread().interrupt();
         }
     }
 
@@ -60,9 +59,8 @@ public class ExportService {
      *
      * @param devices the list of devices to export
      * @param file the target XLSX file
-     * @throws IOException if an I/O error occurs during export
      */
-    public void exportToXLSX(List<PlanetSwitchDevice> devices, File file) throws IOException {
+    public void exportToXLSX(List<PlanetSwitchDevice> devices, File file) {
         logger.info("Starting XLSX export to: {}", file.getAbsolutePath());
 
         try (Workbook workbook = new XSSFWorkbook()) {
@@ -99,7 +97,7 @@ public class ExportService {
             logger.info("XLSX export completed successfully: {} devices exported", devices.size());
         } catch (IOException e) {
             logger.error("Error during XLSX export", e);
-            throw e;
+            Thread.currentThread().interrupt();
         }
     }
 

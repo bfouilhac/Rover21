@@ -65,6 +65,8 @@ public class PreferencesManager {
     private static final String KEY_LAST_EXPORT_PATH = "last.export.path";
     private static final String KEY_DEFAULT_CONFIG_PATH = "default.config.path";
 
+    private PreferencesManager() {}
+
     public static String getLastExportPath() {
         return prefs.get(KEY_LAST_EXPORT_PATH, "");
     }

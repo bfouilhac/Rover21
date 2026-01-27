@@ -125,18 +125,11 @@ public class NetworkAdapterService {
         while (inetAddresses.hasMoreElements()) {
             InetAddress inetAddress = inetAddresses.nextElement();
 
-            if (!(inetAddress instanceof Inet4Address)) {
-                continue; // only process IPv4 addresses
-            }
-
-            String ipAddress = inetAddress.getHostAddress();
-
-            if (isAddressExcluded(ipAddress)) {
-                continue; // skip localhost and APIPA addresses
+            if (!(inetAddress instanceof Inet4Address) || isAddressExcluded(inetAddress.getHostAddress())) {
+                continue;
             }
 
             NetworkInterfaceCustom adapter = createAdapter(networkInterface, (Inet4Address) inetAddress);
-
             if (adapter != null) {
                 adapters.add(adapter);
                 logger.info("Found network adapter: {} - {}", adapter.getName(), adapter.getIpAddress());

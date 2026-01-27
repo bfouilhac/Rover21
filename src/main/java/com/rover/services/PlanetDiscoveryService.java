@@ -166,8 +166,7 @@ public class PlanetDiscoveryService {
      * @return the configured DatagramSocket, or null if binding fails
      */
     private DatagramSocket createReceiveSocket(int port, int timeout) {
-        try {
-            DatagramSocket socket = new DatagramSocket(port);
+        try (DatagramSocket socket = new DatagramSocket(port)) {
             socket.setSoTimeout(timeout);
             socket.setBroadcast(true);
             logger.info("Receive socket bound to port: {}", port);
@@ -191,13 +190,12 @@ public class PlanetDiscoveryService {
      * @throws SocketException if socket creation fails
      */
     private DatagramSocket createSendSocket(String localAddress, int port) throws SocketException {
-        try {
-            InetAddress address = InetAddress.getByName(localAddress);
-            DatagramSocket socket = new DatagramSocket(new InetSocketAddress(address, port));
+        try (DatagramSocket socket = new DatagramSocket(new InetSocketAddress(InetAddress.getByName(localAddress), port))){
             socket.setBroadcast(true);
             logger.info("Send socket created on port: {}", socket.getLocalPort());
             return socket;
         } catch (UnknownHostException e) {
+            logger.error("Invalid local address: {}", localAddress);
             throw new SocketException("Invalid local address: " + localAddress);
         }
     }

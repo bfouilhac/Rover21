@@ -45,12 +45,12 @@ public class RSTPTopologyDialog extends JDialog {
     private static final int COL_ROOT_MAC = 6;
     private static final int COL_PATH_COST = 7;
 
-    private final LanguageManager lang = LanguageManager.getInstance();
-    private final RSTPDiscoveryService discoveryService;
+    private final transient LanguageManager lang = LanguageManager.getInstance();
+    private final transient RSTPDiscoveryService discoveryService;
 
     private JTable rstpTable;
     private DefaultTableModel tableModel;
-    private RSTPTopology topology;
+    private transient RSTPTopology topology;
     private JLabel statusLabel;
 
     public RSTPTopologyDialog(JFrame parent, List<PlanetSwitchDevice> devices) {
@@ -245,6 +245,7 @@ public class RSTPTopologyDialog extends JDialog {
                 } catch (Exception e) {
                     logger.error("Failed to discover topology", e);
                     showError(lang.get("error.topology_discover", e.getMessage()));
+                    Thread.currentThread().interrupt();
                 }
             }
         };
