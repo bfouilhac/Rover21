@@ -4,7 +4,6 @@ import com.rover.model.NetworkInterfaceCustom;
 import com.rover.model.PlanetSwitchDevice;
 import com.rover.utils.LanguageManager;
 import com.rover.utils.PreferencesManager;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -12,7 +11,6 @@ import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.table.*;
 import java.awt.*;
-
 import java.awt.event.AWTEventListener;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
@@ -95,6 +93,7 @@ public class MainWindow extends JFrame {
     private JButton getAllSCButton;
     private JButton discoverButton;
     private JButton refreshAdaptersButton;
+    private JButton showRSTPTopologyButton;
 
     // Data lists
     private List<PlanetSwitchDevice> discoveredDevices;
@@ -625,8 +624,7 @@ public class MainWindow extends JFrame {
 
         comboBox.setRenderer(new DefaultListCellRenderer() {
             @Override
-            public Component getListCellRendererComponent(JList<?> list, Object value,
-                                                          int index, boolean isSelected, boolean cellHasFocus) {
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
                 super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
                 setFont(FONT_MODERN);
                 if (value instanceof NetworkInterfaceCustom adapter) {
@@ -877,9 +875,11 @@ public class MainWindow extends JFrame {
 
         downloadSCButton = createActionButton(lang.get("button.get_startup_config"), e -> handleGetStartupConfig());
         getAllSCButton = createActionButton(lang.get("button.get_all_config"), e -> handleGetAllConfigs());
+        showRSTPTopologyButton = createActionButton("RSTP", e -> handleGetRSTP());
 
         bottomPanel.add(downloadSCButton);
         bottomPanel.add(getAllSCButton);
+        bottomPanel.add(showRSTPTopologyButton);
 
         add(bottomPanel, BorderLayout.SOUTH);
     }
@@ -887,7 +887,7 @@ public class MainWindow extends JFrame {
     /**
      * Creates a styled action button.
      */
-    private JButton createActionButton(String text, java.awt.event.ActionListener listener) {
+    public static JButton createActionButton(String text, java.awt.event.ActionListener listener) {
         JButton button = new JButton(text);
         button.setFont(FONT_MODERN);
         button.setPreferredSize(new Dimension(BUTTON_WIDTH, BUTTON_HEIGHT));
@@ -965,6 +965,13 @@ public class MainWindow extends JFrame {
         if (eventListener != null) {
             eventListener.onGetAllConfigsClicked(discoveredDevices);
         }
+    }
+
+    /**
+     * Handles the get RSTP button.
+     */
+    private void handleGetRSTP(){
+        new RSTPTopologyDialog(this, discoveredDevices).setVisible(true);
     }
 
     /**
@@ -1190,6 +1197,7 @@ public class MainWindow extends JFrame {
         SwingUtilities.invokeLater(() -> {
             downloadSCButton.setEnabled(devicesTable.getSelectedRowCount() == 1); // Enabling if ONE device is selected
             getAllSCButton.setEnabled(!discoveredDevices.isEmpty() && devicesTable.getSelectedRowCount() == 0);
+            showRSTPTopologyButton.setEnabled(!discoveredDevices.isEmpty());
         });
     }
 

@@ -7,7 +7,6 @@ import com.rover.ui.APP_STATE;
 import com.rover.ui.MainWindow;
 import com.rover.utils.LanguageManager;
 import com.rover.utils.PreferencesManager;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

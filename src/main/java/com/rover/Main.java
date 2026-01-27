@@ -3,7 +3,6 @@ package com.rover;
 import com.formdev.flatlaf.FlatLightLaf;
 import com.rover.controller.MainController;
 import com.rover.ui.MainWindow;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

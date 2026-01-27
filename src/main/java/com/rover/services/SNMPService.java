@@ -2,10 +2,8 @@ package com.rover.services;
 
 import com.rover.model.PlanetSwitchDevice;
 import com.rover.utils.PreferencesManager;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
 import org.snmp4j.*;
 import org.snmp4j.event.ResponseEvent;
 import org.snmp4j.mp.MPv3;

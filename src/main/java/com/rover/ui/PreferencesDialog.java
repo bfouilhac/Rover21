@@ -2,7 +2,6 @@ package com.rover.ui;
 
 import com.rover.utils.LanguageManager;
 import com.rover.utils.PreferencesManager;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

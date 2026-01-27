@@ -3,7 +3,6 @@ package com.rover.services;
 import com.rover.model.PlanetSwitchDevice;
 import com.rover.utils.LanguageManager;
 import com.rover.utils.PreferencesManager;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -388,6 +387,7 @@ public class PlanetDiscoveryService {
                 snmpService = new SNMPService();
 
                 if (snmpService.testSNMPConnectivity(device.getIpAddress())) {
+                    device.setSNMPUp(true);
                     snmpService.enrichDeviceWithSNMP(device);
                     enriched = true;
 
@@ -397,6 +397,7 @@ public class PlanetDiscoveryService {
                     logger.warn("SNMP not accessible for {}", device.getIpAddress());
                     device.setSystemLocation("SNMP not available");
                     device.setSystemUptime("N/A");
+                    device.setSNMPUp(false);
                 }
 
             } catch (Exception e) {

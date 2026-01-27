@@ -1,0 +1,60 @@
+package com.rover.model.rstp;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Represents the complete RSTP topology of the network.
+ * <p>
+ * Contains all switches (nodes) and their interconnections (links),
+ * along with the identification of the root bridge.
+ * </p>
+ *
+ * @author Benjamin FOUILHAC, ADM21 - January 2026
+ */
+public class RSTPTopology {
+
+    private final List<RSTPNode> nodes;
+    private final List<RSTPLink> links;
+    private RSTPNode rootBridge;
+    private final long discoveryTimestamp;
+
+    public RSTPTopology() {
+        this.nodes = new ArrayList<>();
+        this.links = new ArrayList<>();
+        this.discoveryTimestamp = System.currentTimeMillis();
+    }
+
+    public List<RSTPNode> getNodes() {return nodes;}
+
+    public void addNode(RSTPNode node) {
+        if (!nodes.contains(node)) {
+            nodes.add(node);
+        }
+    }
+
+    public void setRootBridge(RSTPNode rootBridge) {
+        this.rootBridge = rootBridge;
+        if (rootBridge != null) {
+            rootBridge.setRootBridge(true);
+        }
+    }
+
+    /**
+     * Checks if the topology is valid (has nodes and a root bridge).
+     */
+    public boolean isValid() {return !nodes.isEmpty() && rootBridge != null;}
+
+    /**
+     * Gets the number of nodes in the topology.
+     */
+    public int getNodeCount() {return nodes.size();}
+
+    @Override
+    public String toString() {
+        return String.format("RstpTopology{nodes=%d, links=%d, root=%s, timestamp=%d}",
+                nodes.size(), links.size(),
+                (rootBridge != null ? rootBridge.getDeviceName() : "none"),
+                discoveryTimestamp);
+    }
+}
