@@ -21,9 +21,9 @@ public class PlanetSwitchDevice {
     private String ipAddress;
     private String netMask; // Network mask (e.g., "255.255.255.0").
     private String gateway;
-    private String description; //** Additional device description.
+    private String description; // Additional device description.
     private String username;
-    private String password;
+    private String password = "-";
 
     private boolean isOnline;
 
@@ -31,7 +31,6 @@ public class PlanetSwitchDevice {
     private boolean isSSHUp = false;
     private boolean isHTTPUp = false;
     private boolean isHTTPSUp = false;
-    private boolean isSNMPUp = false;
 
     // SNMP Data
     private String systemLocation; // System location retrieved via SNMP (e.g., "Building A, Floor 2").
@@ -171,13 +170,6 @@ public class PlanetSwitchDevice {
     public boolean isHTTPSUp() {return isHTTPSUp;}
 
     /**
-     * Returns if SNMP is enabled on this device.
-     *
-     * @return either true or false
-     */
-    public boolean isSNMPUp() {return isSNMPUp;}
-
-    /**
      * Sets the username of the admin account for this device
      */
     public void setUsername(String username){this.username = username;}
@@ -304,13 +296,6 @@ public class PlanetSwitchDevice {
      * @param isHTTPSUp the result of the protocol test
      */
     public void setHTTPSUp(boolean isHTTPSUp) {this.isHTTPSUp = isHTTPSUp;}
-
-    /**
-     * Sets to true if SNMP is enabled on this device
-     *
-     * @param isSNMPUp the result of the protocol test
-     */
-    public void setSNMPUp(boolean isSNMPUp) {this.isSNMPUp = isSNMPUp;}
 
     /**
      * Returns a string representation of this device with key information.

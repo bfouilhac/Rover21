@@ -11,10 +11,7 @@ import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.table.*;
 import java.awt.*;
-import java.awt.event.AWTEventListener;
-import java.awt.event.FocusAdapter;
-import java.awt.event.FocusEvent;
-import java.awt.event.MouseEvent;
+import java.awt.event.*;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -72,6 +69,7 @@ public class MainWindow extends JFrame {
     private static final int COL_SSH = 11;
     private static final int COL_HTTP = 12;
     private static final int COL_HTTPS = 13;
+    private static final int COL_PASSWORD = 14;
 
     private final transient LanguageManager lang = LanguageManager.getInstance();
 
@@ -310,6 +308,19 @@ public class MainWindow extends JFrame {
 
             protocolStatusCache.computeIfAbsent(macAddress, k -> new HashMap<>()).put(protocol.toLowerCase(), isAvailable);
         }
+    }
+
+    /**
+     * Updates the password text a device.
+     *
+     * @param device the device to update
+     */
+    public void setDevicePassword(PlanetSwitchDevice device){
+        int row = findDeviceRowByMac(device.getMacAddress());
+        if (row >= 0) {
+            tableModel.setValueAt(device.getPassword(), row, COL_PASSWORD);
+        }
+        logger.debug("Set device password to {} for device at row {}", device.getPassword(), row);
     }
 
     /**
@@ -770,7 +781,8 @@ public class MainWindow extends JFrame {
                 "Telnet",
                 "SSH",
                 "HTTP",
-                "HTTPS"
+                "HTTPS",
+                lang.get("table.password")
         };
     }
 
@@ -858,8 +870,9 @@ public class MainWindow extends JFrame {
         }
 
         devicesTable.getColumnModel().getColumn(COL_LOCK).setCellRenderer(new LockIconRenderer());
+        devicesTable.getColumnModel().getColumn(COL_PASSWORD).setCellRenderer(new PasswordCellRenderer());
 
-        int[] columnWidths = {100, 160, 140, 120, 120, 120, 120, 200, 150, 180, 70, 70, 70, 70};
+        int[] columnWidths = {100, 160, 140, 120, 120, 120, 120, 200, 150, 180, 70, 70, 70, 70, 150};
         for (int i = 0; i < columnWidths.length; i++) {
             devicesTable.getColumnModel().getColumn(i).setPreferredWidth(columnWidths[i]);
         }
@@ -1075,7 +1088,8 @@ public class MainWindow extends JFrame {
                 device.getDescription(),
                 translateValue(device.getSystemLocation()),
                 translateValue(device.getSystemUptime()),
-                false, false, false, false
+                false, false, false, false,
+                device.getPassword()
         });
     }
 
@@ -1252,5 +1266,64 @@ public class MainWindow extends JFrame {
     public void dispose() {
         cleanup();
         super.dispose();
+    }
+
+    /**
+     * Custom cell renderer for the password column.
+     * Displays asterisks by default and reveals password on mouse hover.
+     */
+    private class PasswordCellRenderer extends DefaultTableCellRenderer {
+        private int hoveredRow = -1;
+
+        PasswordCellRenderer() {
+            setHorizontalAlignment(SwingConstants.CENTER);
+            setFont(FONT_TABLE);
+
+            devicesTable.addMouseMotionListener(new MouseMotionAdapter() {
+                @Override
+                public void mouseMoved(MouseEvent e) {
+                    int row = devicesTable.rowAtPoint(e.getPoint());
+                    int col = devicesTable.columnAtPoint(e.getPoint());
+
+                    if (col == COL_PASSWORD && row != hoveredRow) {
+                        hoveredRow = row;
+                        devicesTable.repaint();
+                    } else if (col != COL_PASSWORD && hoveredRow != -1) {
+                        hoveredRow = -1;
+                        devicesTable.repaint();
+                    }
+                }
+            });
+
+            devicesTable.addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseExited(MouseEvent e) {
+                    if (hoveredRow != -1) {
+                        hoveredRow = -1;
+                        devicesTable.repaint();
+                    }
+                }
+            });
+        }
+
+        @Override
+        public Component getTableCellRendererComponent(JTable table, Object value,
+                                                       boolean isSelected, boolean hasFocus, int row, int column) {
+            super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+
+            if (!getText().equals(devicesTable.getSelectionBackground().toString())) {
+                setBackground(row % 2 == 0 ? COLOR_ALTERNATE_ROW : Color.WHITE);
+            }
+
+            if (value == null || value.toString().isEmpty()) {
+                setText(lang.get("table.na"));
+            } else if (row == hoveredRow) {
+                setText(value.toString());
+            } else {
+                setText("*".repeat(8));
+            }
+
+            return this;
+        }
     }
 }

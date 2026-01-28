@@ -388,7 +388,6 @@ public class PlanetDiscoveryService {
                 snmpService = new SNMPService();
 
                 if (snmpService.testSNMPConnectivity(device.getIpAddress())) {
-                    device.setSNMPUp(true);
                     snmpService.enrichDeviceWithSNMP(device);
                     enriched = true;
 
@@ -398,7 +397,6 @@ public class PlanetDiscoveryService {
                     logger.warn("SNMP not accessible for {}", device.getIpAddress());
                     device.setSystemLocation("SNMP not available");
                     device.setSystemUptime("N/A");
-                    device.setSNMPUp(false);
                 }
 
             } catch (Exception e) {

@@ -203,6 +203,7 @@ public class ProtocolTestService {
 
             if (testTelnetLogin(ipAddress, port, username, password)) {
                 logger.warn("Telnet INSECURE on {}: credentials {}/{} work", ipAddress, username, password);
+                result.setPassword(password);
                 return new SecurityTestResult(true, false);
             }
         }
@@ -214,12 +215,14 @@ public class ProtocolTestService {
     private SecurityTestResult testTelnetWithDefaultCredentials(String ipAddress, int port, String macAddress) {
         if (testTelnetLogin(ipAddress, port, DEFAULT_USERNAME, DEFAULT_PASSWORD)) {
             logger.warn("Telnet INSECURE on {}: factory credentials {}/{} work", ipAddress, DEFAULT_USERNAME, DEFAULT_PASSWORD);
+            result.setPassword(DEFAULT_PASSWORD);
             return new SecurityTestResult(true, false);
         }
 
         String macBasedPassword = generateMacBasedPassword(macAddress);
         if (testTelnetLogin(ipAddress, port, DEFAULT_USERNAME, macBasedPassword)) {
             logger.warn("Telnet INSECURE on {}: factory credentials {}/{} work", ipAddress, DEFAULT_USERNAME, macBasedPassword);
+            result.setPassword(macBasedPassword);
             return new SecurityTestResult(true, false);
         }
 

@@ -46,7 +46,7 @@ public class RSTPDiscoveryService {
                 .filter(d -> d.isSSHUp() &&
                         d.getUsername() != null &&
                         d.getPassword() != null &&
-                        sshService.isRstpEnabled(d))
+                        sshService.isRSTPEnabled(d))
                 .toList();
 
         if (rstpDevices.isEmpty()) {
@@ -64,7 +64,7 @@ public class RSTPDiscoveryService {
                 futures.add(executor.submit(() -> {
                     try {
                         logger.info("Attempting SSH connection to {}", device.getIpAddress());
-                        RSTPNode node = sshService.getRstpInfo(device);
+                        RSTPNode node = sshService.getRSTPInfo(device);
                         logger.info("Successfully retrieved RSTP info from {}", device.getIpAddress());
                         return node;
                     } catch (IOException e) {

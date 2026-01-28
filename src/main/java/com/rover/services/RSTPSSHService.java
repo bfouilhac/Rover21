@@ -10,9 +10,7 @@ import com.rover.utils.SSHConnectionManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -23,7 +21,7 @@ import java.util.regex.Pattern;
  *
  * @author Benjamin FOUILHAC, ADM21 - January 2026
  */
-public class RSTPSSHService{
+public class RSTPSSHService {
 
     private static final Logger logger = LoggerFactory.getLogger(RSTPSSHService.class);
 
@@ -37,15 +35,20 @@ public class RSTPSSHService{
 
     private final SSHConnectionManager sshManager;
 
-    // Regex patterns for parsing
+    // Regex patterns for parsing - Format 1 (IGS-6325)
     private static final Pattern PROTOCOL_PATTERN = Pattern.compile("Protocol Version:\\s*(\\w+)");
     private static final Pattern BRIDGE_ID_PATTERN = Pattern.compile("Bridge ID\\s*:\\s*(\\d+)\\.(\\S+)");
     private static final Pattern ROOT_ID_PATTERN = Pattern.compile("Root ID\\s*:\\s*(\\d+)\\.(\\S+)");
     private static final Pattern ROOT_COST_PATTERN = Pattern.compile("Root PathCost:\\s*(\\d+)");
     private static final Pattern MAX_HOPS_PATTERN = Pattern.compile("Max Hops\\s*:\\s*(\\d+)");
-    private static final Pattern PORT_LINE_PATTERN = Pattern.compile(
-            "^(\\S+\\s+\\d+/\\d+)\\s+(\\w+)\\s+(\\w+)\\s+(\\d+)\\s+(\\d+)\\s+(\\w+)\\s+(\\w+).*"
-    );
+    private static final Pattern PORT_LINE_PATTERN = Pattern.compile("^(\\S+\\s+\\d+/\\d+)\\s+(\\w+)\\s+(\\w+)\\s+(\\d+)\\s+(\\d+)\\s+(\\w+)\\s+(\\w+).*");
+
+    // Regex patterns for Format 2 - multiline bridge/root info
+    private static final Pattern BRIDGE_PRIORITY_PATTERN = Pattern.compile("Bridge ID\\s+Priority\\s+(\\d+)");
+    private static final Pattern BRIDGE_ADDRESS_PATTERN = Pattern.compile("Address\\s+([a-f0-9:]+)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern ROOT_PRIORITY_PATTERN = Pattern.compile("Root ID\\s+Priority\\s+(\\d+)");
+    private static final Pattern ROOT_COST_ALT_PATTERN = Pattern.compile("Cost\\s+(\\d+)");
+    private static final Pattern PORT_LINE_ALT_PATTERN = Pattern.compile("^\\s*(gi\\d+)\\s+(\\w+)\\s+\\d+\\.(\\d+)\\s+(\\d+)\\s+(\\w+)\\s+(\\w+).*");
 
     public RSTPSSHService() {
         this.sshManager = new SSHConnectionManager();
@@ -57,7 +60,7 @@ public class RSTPSSHService{
      * @param device the device to check
      * @return true if RSTP/STP is enabled
      */
-    public boolean isRstpEnabled(PlanetSwitchDevice device) {
+    public boolean isRSTPEnabled(PlanetSwitchDevice device) {
         if (!device.isSSHUp()) {
             logger.debug("Device {} SSH not available", device.getIpAddress());
             return false;
@@ -68,6 +71,7 @@ public class RSTPSSHService{
             String output = executeSshCommand(device, "show spanning-tree summary");
 
             boolean enabled = output.contains("Protocol Version: RSTP") || output.contains("Protocol Version: Compatible");
+
             logger.info("Device {} RSTP enabled: {}", device.getIpAddress(), enabled);
             return enabled;
         } catch (Exception e) {
@@ -81,10 +85,10 @@ public class RSTPSSHService{
      * Retrieves complete RSTP information for a device.
      *
      * @param device the device to query
-     * @return RSTPNode with all information
+     * @return RSTPNodeNode with all information
      * @throws IOException if SSH query fails
      */
-    public RSTPNode getRstpInfo(PlanetSwitchDevice device) throws IOException {
+    public RSTPNode getRSTPInfo(PlanetSwitchDevice device) throws IOException {
         if (!device.isSSHUp() || device.getUsername() == null || device.getPassword() == null) {
             throw new IOException("SSH not available or credentials missing for " + device.getIpAddress());
         }
@@ -133,10 +137,20 @@ public class RSTPSSHService{
             logger.debug("Executing 'show spanning-tree summary' on {}", device.getIpAddress());
             String summaryOutput = executeCommandInSession(in, out, "show spanning-tree summary");
 
+            // Check if a summary command is supported
+            boolean summarySupported = !summaryOutput.toLowerCase().contains("unknown command");
+
             logger.debug("Executing 'show spanning-tree' on {}", device.getIpAddress());
             String detailOutput = executeCommandInSession(in, out, "show spanning-tree");
 
-            parseRstpVersion(summaryOutput, node);
+            // Parse based on available output
+            if (summarySupported) {
+                parseRSTPVersion(summaryOutput, node);
+            } else {
+                logger.debug("'show spanning-tree summary' not supported, parsing from detail output");
+                parseRSTPVersionFromDetail(detailOutput, node);
+            }
+
             parseSpanningTreeInfo(detailOutput, node);
 
             logger.info("Successfully retrieved RSTP info for {}: version={}, cost={}, ports={}", device.getDeviceName(), node.getVersion(), node.getRootCost(), node.getPorts().size());
@@ -145,8 +159,9 @@ public class RSTPSSHService{
             logger.error("SSH connection failed for {}: {}", device.getIpAddress(), e.getMessage());
             Thread.currentThread().interrupt();
         } catch (InterruptedException e) {
-            logger.error("Operation interrupted for {}", device.getIpAddress());
             Thread.currentThread().interrupt();
+            logger.error("Operation interrupted for {}", device.getIpAddress());
+            throw new IOException("Operation interrupted", e);
         } finally {
             sshManager.disconnect(channel, session);
         }
@@ -169,6 +184,19 @@ public class RSTPSSHService{
         logger.debug("Command '{}' executed, output length: {} chars", command, result.length());
 
         return result;
+    }
+
+    /**
+     * Executes a command and returns the output.
+     *
+     * @param device the current device to execute the command on
+     * @return the mac address table output
+     * @throws IOException if ssh fails
+     * @throws JSchException if the connection fails
+     * @throws InterruptedException if interrupted
+     */
+    public String executeMacTableCommand(PlanetSwitchDevice device) throws IOException, JSchException, InterruptedException {
+        return executeSshCommand(device, "show mac address-table");
     }
 
     /**
@@ -242,7 +270,9 @@ public class RSTPSSHService{
      * Performs adaptive login on the switch.
      * Handles devices that ask for login/password multiple times.
      */
-    private boolean performAdaptiveLogin(InputStream in, OutputStream out, String username, String password) throws IOException, InterruptedException {
+    private boolean performAdaptiveLogin(InputStream in, OutputStream out,
+                                         String username, String password)
+            throws IOException, InterruptedException {
 
         StringBuilder buffer = new StringBuilder();
         long startTime = System.currentTimeMillis();
@@ -366,7 +396,7 @@ public class RSTPSSHService{
     /**
      * Parses RSTP version from summary output.
      */
-    private void parseRstpVersion(String output, RSTPNode node) {
+    private void parseRSTPVersion(String output, RSTPNode node) {
         Matcher matcher = PROTOCOL_PATTERN.matcher(output);
         if (matcher.find()) {
             String version = matcher.group(1);
@@ -379,9 +409,41 @@ public class RSTPSSHService{
     }
 
     /**
+     * Parses RSTP version from detail output (for switches without a summary command).
+     * Format: "Spanning tree enabled mode RSTP"
+     */
+    private void parseRSTPVersionFromDetail(String output, RSTPNode node) {
+        if (output.contains("enabled mode RSTP")) {
+            node.setVersion(RSTPVersion.RSTP);
+            logger.debug("Detected RSTP from detail output");
+        } else if (output.contains("enabled mode STP")) {
+            node.setVersion(RSTPVersion.STP);
+            logger.debug("Detected STP from detail output");
+        } else if (output.contains("enabled mode MSTP")) {
+            node.setVersion(RSTPVersion.MSTP);
+            logger.debug("Detected MSTP from detail output");
+        }
+    }
+
+    /**
      * Parses spanning tree detailed information.
+     * Supports both Format 1 (IGS-6325) and Format 2.
      */
     private void parseSpanningTreeInfo(String output, RSTPNode node) {
+        // Detect a format by checking for colon-based syntax
+        boolean isFormat1 = output.contains("Bridge ID    :");
+
+        if (isFormat1) {
+            parseFormat1(output, node);
+        } else {
+            parseFormat2(output, node);
+        }
+    }
+
+    /**
+     * Parses Format 1 (IGS-6325): "Bridge ID    : 32768.A8-F7-E0-C5-10-5D"
+     */
+    private void parseFormat1(String output, RSTPNode node) {
         String[] lines = output.split("\n");
 
         // Parse bridge and root information
@@ -441,6 +503,108 @@ public class RSTPSSHService{
     }
 
     /**
+     * Parses multiline format
+     */
+    private void parseFormat2(String output, RSTPNode node) {
+        String[] lines = output.split("\n");
+
+        String bridgePriority = null;
+        String bridgeAddress = null;
+        String rootPriority = null;
+        String rootAddress = null;
+        boolean inBridgeSection = false;
+        boolean inRootSection = false;
+
+        // Parse bridge and root information (multiline)
+        for (String line : lines) {
+            // Bridge ID section
+            if (line.contains("Bridge ID")) {
+                inBridgeSection = true;
+                inRootSection = false;
+                Matcher prioMatcher = BRIDGE_PRIORITY_PATTERN.matcher(line);
+                if (prioMatcher.find()) {
+                    bridgePriority = prioMatcher.group(1);
+                }
+            }
+
+            // Root ID section
+            if (line.contains("Root ID")) {
+                inRootSection = true;
+                inBridgeSection = false;
+                Matcher prioMatcher = ROOT_PRIORITY_PATTERN.matcher(line);
+                if (prioMatcher.find()) {
+                    rootPriority = prioMatcher.group(1);
+                }
+            }
+
+            // Parse Address lines
+            if (line.trim().startsWith("Address")) {
+                Matcher addrMatcher = BRIDGE_ADDRESS_PATTERN.matcher(line);
+                if (addrMatcher.find()) {
+                    String addr = addrMatcher.group(1).replace("-", ":");
+                    if (inBridgeSection) {
+                        bridgeAddress = addr;
+                    } else if (inRootSection) {
+                        rootAddress = addr;
+                    }
+                }
+            }
+
+            // Parse Cost and Port (in a Root section)
+            if (inRootSection) {
+                Matcher costMatcher = ROOT_COST_ALT_PATTERN.matcher(line);
+                if (costMatcher.find()) {
+                    node.setRootCost(Integer.parseInt(costMatcher.group(1)));
+                }
+            }
+
+            // Parse Max Age (hop count in Format 2 uses Max Age)
+            if (line.contains("Max Age") && line.contains("sec")) {
+                Matcher hopMatcher = Pattern.compile("Max Age\\s+(\\d+)").matcher(line);
+                if (hopMatcher.find()) {
+                    node.setHopCount(Integer.parseInt(hopMatcher.group(1)));
+                }
+            }
+        }
+
+        // Set Bridge ID and Root ID
+        if (bridgePriority != null && bridgeAddress != null) {
+            node.setBridgeId(bridgePriority + "." + bridgeAddress);
+        }
+        if (rootPriority != null && rootAddress != null) {
+            node.setRootBridgeId(rootPriority + "." + rootAddress);
+        }
+
+        // Parse port table (Format 2)
+        List<RSTPPort> ports = new ArrayList<>();
+        boolean inPortTable = false;
+
+        for (String line : lines) {
+            if (line.contains("Name") && line.contains("State") && line.contains("Role")) {
+                inPortTable = true;
+                continue;
+            }
+
+            if (inPortTable && line.contains("------")) {
+                continue;
+            }
+
+            if (inPortTable && line.trim().isEmpty()) {
+                break;
+            }
+
+            if (inPortTable) {
+                RSTPPort port = parsePortLineFormat2(line);
+                if (port != null) {
+                    ports.add(port);
+                }
+            }
+        }
+
+        node.setPorts(ports);
+    }
+
+    /**
      * Parses a single port line from the spanning tree output.
      */
     private RSTPPort parsePortLine(String line) {
@@ -467,6 +631,37 @@ public class RSTPSSHService{
 
         } catch (Exception e) {
             logger.warn("Failed to parse port line: {}", line, e);
+            return null;
+        }
+    }
+
+    /**
+     * Parses a single port line from Format 2 output
+     */
+    private RSTPPort parsePortLineFormat2(String line) {
+        Matcher matcher = PORT_LINE_ALT_PATTERN.matcher(line.trim());
+        if (!matcher.matches()) {
+            return null;
+        }
+
+        try {
+            String portName = matcher.group(1).trim(); // "gi2"
+            int pathCost = Integer.parseInt(matcher.group(4)); // "20000"
+            String stateShort = matcher.group(5); // "Frw"/"Dis"
+            String role = matcher.group(6); // "Root"/"Desg"
+
+            // Extract port number from "gi2" -> 2
+            int portNumber = Integer.parseInt(portName.replace("\\D", ""));
+
+            RSTPPort port = new RSTPPort(portNumber);
+            port.setPathCost(pathCost);
+            port.setState(mapStateShort(stateShort));
+            port.setRole(mapRoleShort(role));
+
+            return port;
+
+        } catch (Exception e) {
+            logger.warn("Failed to parse Format 2 port line: {}", line, e);
             return null;
         }
     }
@@ -509,6 +704,35 @@ public class RSTPSSHService{
             case "alternateport" -> RSTPPortRole.ALTERNATE;
             case "backupport" -> RSTPPortRole.BACKUP;
             case "disabled" -> RSTPPortRole.DISABLED;
+            default -> RSTPPortRole.UNKNOWN;
+        };
+    }
+
+    /**
+     * Maps short state string (Format 2) to RSTPPortState enum.
+     * "Frw" -> FORWARDING, "Dis" -> DISCARDING, etc.
+     */
+    private RSTPPortState mapStateShort(String stateShort) {
+        return switch (stateShort.toLowerCase()) {
+            case "frw" -> RSTPPortState.FORWARDING;
+            case "dis" -> RSTPPortState.DISCARDING;
+            case "lrn" -> RSTPPortState.LEARNING;
+            case "lis" -> RSTPPortState.LISTENING;
+            case "blk" -> RSTPPortState.BLOCKING;
+            default -> RSTPPortState.UNKNOWN;
+        };
+    }
+
+    /**
+     * Maps a short role string (Format 2) to RSTPPortRole enum.
+     * "Root" -> ROOT, "Desg" -> DESIGNATED, etc.
+     */
+    private RSTPPortRole mapRoleShort(String role) {
+        return switch (role.toLowerCase()) {
+            case "root" -> RSTPPortRole.ROOT;
+            case "desg" -> RSTPPortRole.DESIGNATED;
+            case "altn" -> RSTPPortRole.ALTERNATE;
+            case "back" -> RSTPPortRole.BACKUP;
             default -> RSTPPortRole.UNKNOWN;
         };
     }

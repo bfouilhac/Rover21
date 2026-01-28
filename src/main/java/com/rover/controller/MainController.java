@@ -583,6 +583,8 @@ public class MainController implements MainWindow.UIEventListener {
                 device.setUsername(result.getUsername());
                 device.setPassword(result.getPassword());
 
+                view.setDevicePassword(device);
+
                 // Track protocol test completion
                 checkProtocolTestsCompletion();
             }

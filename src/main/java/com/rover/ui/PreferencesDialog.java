@@ -619,6 +619,9 @@ public class PreferencesDialog extends JDialog {
             return;
         }
 
+        if (!PreferencesManager.getCustomAccountMap().contains("admin:admin")){
+            PreferencesManager.getCustomAccountMap().add("admin:admin");
+        }
         PreferencesManager.getCustomAccountMap().add(credential);
         customUsernameField.setText("");
         customPasswordField.setText("");
