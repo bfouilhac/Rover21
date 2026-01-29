@@ -1,7 +1,6 @@
 package com.rover.services;
 
 import com.jcraft.jsch.JSchException;
-import com.rover.model.PlanetSwitchDevice;
 import com.rover.model.rstp.RSTPLink;
 import com.rover.model.rstp.RSTPNode;
 import org.slf4j.Logger;
@@ -102,10 +101,9 @@ public class LinkDiscoveryService {
             } catch (IOException e) {
                 logger.error("Failed to get MAC table from {}: {}", node.getDeviceName(), e.getMessage());
                 tables.put(node, new ArrayList<>());
-            } catch (JSchException e) {
-                throw new RuntimeException(e);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+            } catch (JSchException | InterruptedException e) {
+                logger.error("SSH connection failed for {}: {}", node.getDeviceName(), e.getMessage());
+                Thread.currentThread().interrupt();
             }
         }
 
@@ -139,13 +137,13 @@ public class LinkDiscoveryService {
     }
 
     /**
-     * Extracts port number from port string.
+     * Extracts port number from the port string.
      * "gi2" -> 2, "gi1/2" -> 2
      */
     private int extractPortNumber(String port) {
         if (port == null) return 0;
         String[] parts = port.split("/");
         String lastPart = parts[parts.length - 1];
-        return Integer.parseInt(lastPart.replaceAll("[^0-9]", ""));
+        return Integer.parseInt(lastPart.replace("\\D", ""));
     }
 }

@@ -377,8 +377,7 @@ public class PlanetDiscoveryService {
      * @param callback the callback for notifications
      * @param executor the executor to run enrichment on
      */
-    private void submitSnmpEnrichment(PlanetSwitchDevice device, DiscoveryCallback callback,
-                                      ExecutorService executor) {
+    private void submitSnmpEnrichment(PlanetSwitchDevice device, DiscoveryCallback callback, ExecutorService executor) {
         executor.submit(() -> {
             long startTime = System.currentTimeMillis();
             SNMPService snmpService = null;

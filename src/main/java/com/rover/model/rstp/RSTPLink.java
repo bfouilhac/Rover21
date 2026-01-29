@@ -22,6 +22,12 @@ public class RSTPLink {
         this.active = true;
     }
 
+    public RSTPNode getSourceNode() { return sourceNode; }
+    public int getSourcePort() { return sourcePort; }
+    public RSTPNode getDestinationNode() { return destinationNode; }
+    public int getDestinationPort() { return destinationPort; }
+    public boolean isActive() { return active; }
+
     @Override
     public String toString() {
         return String.format("Link{%s[%d] : %s[%d], active=%b}",
