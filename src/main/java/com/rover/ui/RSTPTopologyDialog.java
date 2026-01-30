@@ -1,17 +1,23 @@
 package com.rover.ui;
 
+import com.rover.controller.MainController;
 import com.rover.model.PlanetSwitchDevice;
 import com.rover.model.rstp.RSTPNode;
 import com.rover.model.rstp.RSTPTopology;
 import com.rover.model.rstp.RSTPVersion;
+import com.rover.services.ExportService;
 import com.rover.services.RSTPDiscoveryService;
 import com.rover.utils.LanguageManager;
+import com.rover.utils.PreferencesManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.swing.*;
+import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.table.*;
 import java.awt.*;
+import java.io.File;
+import java.io.IOException;
 import java.util.List;
 
 /**
@@ -53,6 +59,9 @@ public class RSTPTopologyDialog extends JDialog {
     private transient RSTPTopology topology;
     private JLabel statusLabel;
 
+    private final transient ExportService exportService = new ExportService();
+    private transient SwingWorker<RSTPTopology, String> discoveryWorker;
+
     public RSTPTopologyDialog(JFrame parent, List<PlanetSwitchDevice> devices) {
         setTitle(lang.get("topology.window_title"));
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
@@ -63,6 +72,15 @@ public class RSTPTopologyDialog extends JDialog {
         setSize(DIALOG_WIDTH, DIALOG_HEIGHT);
         setLocationRelativeTo(parent);
         setLayout(new BorderLayout());
+
+        // Add a window listener to cancel discovery and clean up resources on close
+        addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowClosing(java.awt.event.WindowEvent windowEvent) {
+                cancelDiscovery();
+                shutdownRSTPServices();
+            }
+        });
 
         initComponents();
         discoverAndDisplay(devices);
@@ -198,15 +216,24 @@ public class RSTPTopologyDialog extends JDialog {
     private void updateStatus(String message) {
         SwingUtilities.invokeLater(() -> statusLabel.setText(message));
     }
+
     private JPanel createButtonPanel() {
         JPanel panel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 10));
 
-        JButton refreshButton = new JButton(lang.get("button.refresh"));
-        refreshButton.addActionListener(e -> refresh());
+        JButton exportButton = MainWindow.createActionButton(lang.get("button.export"), _ -> export());
 
-        JButton closeButton = new JButton(lang.get("button.close"));
-        closeButton.addActionListener(e -> dispose());
+        JButton refreshButton = MainWindow.createActionButton(lang.get("button.refresh"), _ -> refresh());
 
+        JButton closeButton = MainWindow.createActionButton(lang.get("button.close"), _ -> {
+            shutdownRSTPServices();
+            dispose();
+        });
+
+        exportButton.setEnabled(true);
+        refreshButton.setEnabled(true);
+        closeButton.setEnabled(true);
+
+        panel.add(exportButton);
         panel.add(refreshButton);
         panel.add(closeButton);
 
@@ -214,16 +241,116 @@ public class RSTPTopologyDialog extends JDialog {
     }
 
     /**
+     * Exports the RSTP topology table to a CSV file.
+     */
+    private void export() {
+        JFileChooser fileChooser = MainController.createFileChooser(lang);
+        fileChooser.setDialogTitle(lang.get("export.choose_location"));
+        fileChooser.setFileFilter(new FileNameExtensionFilter("CSV Files (*.csv)", "csv"));
+
+        // Set the initial directory from preferences
+        String lastPath = PreferencesManager.getLastExportPath();
+        if (!lastPath.isEmpty()) {
+            File lastDir = new File(lastPath);
+            if (lastDir.exists() && lastDir.isDirectory()) {
+                fileChooser.setCurrentDirectory(lastDir);
+            }
+        }
+
+        // Set default filename
+        fileChooser.setSelectedFile(new File("rstp_topology_export.csv"));
+
+        int result = fileChooser.showSaveDialog(this);
+
+        if (result == JFileChooser.APPROVE_OPTION) {
+            File file = fileChooser.getSelectedFile();
+
+            // Ensure .csv extension
+            if (!file.getName().toLowerCase().endsWith(".csv")) {
+                file = new File(file.getAbsolutePath() + ".csv");
+            }
+
+            if (file.exists()){
+                int overwriteResult = JOptionPane.showOptionDialog(
+                        this,
+                        lang.get("info.overwrite_message", file.getName()),
+                        lang.get("info.overwrite_title"),
+                        JOptionPane.YES_NO_OPTION,
+                        JOptionPane.WARNING_MESSAGE,
+                        null,
+                        new String[]{lang.get("button.yes"), lang.get("button.no")},
+                        lang.get("button.no")
+                );
+
+                if (overwriteResult != JOptionPane.YES_OPTION) {
+                    logger.info("Export cancelled, no overwrite file");
+                    return;
+                }
+            }
+
+            try {
+                // Export the table model to CSV
+                exportService.exportRSTPToCSV(tableModel, file);
+
+                // Save the export directory for next time
+                PreferencesManager.saveLastExportPath(file.getParent());
+
+                JOptionPane.showMessageDialog(this,
+                    lang.get("export.success", file.getName()),
+                    lang.get("export.title"),
+                    JOptionPane.INFORMATION_MESSAGE);
+
+                logger.info("RSTP topology exported successfully to: {}", file.getAbsolutePath());
+
+            } catch (IOException e) {
+                logger.error("Failed to export RSTP topology", e);
+                JOptionPane.showMessageDialog(this,
+                    lang.get("export.error", e.getMessage()),
+                    lang.get("error.title"),
+                    JOptionPane.ERROR_MESSAGE);
+            }
+        }
+    }
+
+    /**
+     * Cancels the ongoing discovery process if any.
+     */
+    private void cancelDiscovery() {
+        if (discoveryWorker != null && !discoveryWorker.isDone()) {
+            logger.info("Cancelling RSTP discovery...");
+            discoveryWorker.cancel(true);
+            updateStatus(lang.get("status.cancelled"));
+        }
+    }
+
+    /**
+     * Shuts down RSTP services and cleans up all resources.
+     * This closes all SSH connections and channels.
+     */
+    private void shutdownRSTPServices() {
+        logger.info("Shutting down RSTP services...");
+        try {
+            discoveryService.shutdown();
+            logger.info("RSTP services shutdown complete");
+        } catch (Exception e) {
+            logger.error("Error during RSTP services shutdown", e);
+        }
+    }
+
+    /**
      * Discovers RSTP topology and displays in a table.
      */
     private void discoverAndDisplay(List<PlanetSwitchDevice> devices) {
+        // Cancel any existing discovery
+        cancelDiscovery();
+
         // First, display basic info for all SSH-capable devices
         updateStatus(lang.get("status.topology_loading"));
         displayBasicInfo(devices);
 
         updateStatus(lang.get("status.topology_discovering"));
 
-        SwingWorker<RSTPTopology, String> worker = new SwingWorker<>() {
+        discoveryWorker = new SwingWorker<>() {
             @Override
             protected RSTPTopology doInBackground() {
                 return discoveryService.discoverTopology(devices);
@@ -231,6 +358,11 @@ public class RSTPTopologyDialog extends JDialog {
 
             @Override
             protected void done() {
+                if (isCancelled()) {
+                    logger.info("RSTP discovery was cancelled");
+                    return;
+                }
+
                 try {
                     topology = get();
 
@@ -250,7 +382,7 @@ public class RSTPTopologyDialog extends JDialog {
             }
         };
 
-        worker.execute();
+        discoveryWorker.execute();
     }
 
     /**
@@ -297,7 +429,7 @@ public class RSTPTopologyDialog extends JDialog {
                 tableModel.setValueAt(formatStpMode(node.getVersion()), row, COL_STP);
                 tableModel.setValueAt(extractPriority(node.getBridgeId()), row, COL_PRIORITY);
                 tableModel.setValueAt(node.getHopCount() > 0 ? String.valueOf(node.getHopCount()) : "-", row, COL_HOP_COUNT);
-                tableModel.setValueAt(extractMac(node.getRootBridgeId()), row, COL_ROOT_MAC);
+                tableModel.setValueAt(extractMac(node.getRootBridgeId()).toUpperCase(), row, COL_ROOT_MAC);
                 tableModel.setValueAt(String.valueOf(node.getRootCost()), row, COL_PATH_COST);
             }
         }

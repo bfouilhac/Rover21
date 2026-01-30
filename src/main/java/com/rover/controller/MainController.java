@@ -241,7 +241,7 @@ public class MainController implements MainWindow.UIEventListener {
         }
 
         if (baseDirectory == null) {
-            JFileChooser folderChooser = createFileChooser();
+            JFileChooser folderChooser = createFileChooser(lang);
             folderChooser.setDialogTitle(lang.get("info.select_config_folder_title"));
             folderChooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
 
@@ -309,7 +309,7 @@ public class MainController implements MainWindow.UIEventListener {
             @Override
             protected void process(List<String> chunks) {
                 if (!chunks.isEmpty()) {
-                    view.setStatusMessage(chunks.get(chunks.size() - 1));
+                    view.setStatusMessage(chunks.getLast());
                 }
             }
 
@@ -357,7 +357,7 @@ public class MainController implements MainWindow.UIEventListener {
         String fileExtension = fileType.toLowerCase();
         String fileDescription = isCsv ? "CSV Files (*.csv)" : "Excel Files (*.xlsx)";
 
-        JFileChooser fileChooser = createFileChooser();
+        JFileChooser fileChooser = createFileChooser(lang);
         fileChooser.setDialogTitle(lang.get("info.export_title"));
         fileChooser.setFileFilter(new FileNameExtensionFilter(fileDescription, fileExtension));
         fileChooser.setSelectedFile(new File("planet_devices_export." + fileExtension));
@@ -748,7 +748,7 @@ public class MainController implements MainWindow.UIEventListener {
      * @return the JFileChooser created and updated
      * @see JFileChooser
      */
-    private JFileChooser createFileChooser(){
+    public static JFileChooser createFileChooser(LanguageManager lang){
         UIManager.put("FileChooser.saveButtonText", lang.get("button.save"));
         UIManager.put("FileChooser.cancelButtonText", lang.get("button.cancel"));
         UIManager.put("FileChooser.saveDialogTitleText", lang.get("info.export_title"));
@@ -773,7 +773,7 @@ public class MainController implements MainWindow.UIEventListener {
      * @return the selected File, or null if canceled
      */
     private File promptForSaveLocation(PlanetSwitchDevice device) {
-        JFileChooser fileChooser = createFileChooser();
+        JFileChooser fileChooser = createFileChooser(lang);
         fileChooser.setDialogTitle(lang.get("info.save_config_title"));
         fileChooser.setFileFilter(new FileNameExtensionFilter("Config files (*.cfg)", "cfg"));
 

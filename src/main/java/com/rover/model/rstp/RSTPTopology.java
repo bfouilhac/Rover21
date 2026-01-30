@@ -41,9 +41,9 @@ public class RSTPTopology {
     }
 
     /**
-     * Checks if the topology is valid (has nodes and a root bridge).
+     * Checks if the topology is valid (has at least one node).
      */
-    public boolean isValid() {return !nodes.isEmpty() && rootBridge != null;}
+    public boolean isValid() {return !nodes.isEmpty();}
 
     /**
      * Gets the number of nodes in the topology.

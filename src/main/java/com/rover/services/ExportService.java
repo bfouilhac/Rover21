@@ -1,12 +1,14 @@
 package com.rover.services;
 
 import com.rover.model.PlanetSwitchDevice;
+import com.rover.model.rstp.RSTPNode;
 import com.rover.utils.LanguageManager;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.swing.table.TableModel;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
@@ -210,5 +212,47 @@ public class ExportService {
      */
     private String safeString(String value) {
         return value != null ? value : "";
+    }
+
+    /**
+     * Exports RSTP topology data to a CSV file from a table model.
+     *
+     * @param tableModel the table model containing RSTP data
+     * @param file the target CSV file
+     * @throws IOException if an I/O error occurs
+     */
+    public void exportRSTPToCSV(TableModel tableModel, File file) throws IOException {
+        logger.info("Starting RSTP CSV export to: {}", file.getAbsolutePath());
+
+        try (FileWriter writer = new FileWriter(file)) {
+            // Write CSV header
+            int columnCount = tableModel.getColumnCount();
+            for (int col = 0; col < columnCount; col++) {
+                if (col > 0) {
+                    writer.append(",");
+                }
+                writer.append(escapeCsv(tableModel.getColumnName(col)));
+            }
+            writer.append("\n");
+
+            // Write data rows
+            int rowCount = tableModel.getRowCount();
+            for (int row = 0; row < rowCount; row++) {
+                for (int col = 0; col < columnCount; col++) {
+                    if (col > 0) {
+                        writer.append(",");
+                    }
+                    Object value = tableModel.getValueAt(row, col);
+                    writer.append(escapeCsv(value != null ? value.toString() : ""));
+                }
+                writer.append("\n");
+            }
+
+            writer.flush();
+            logger.info("RSTP CSV export completed successfully: {} rows exported", rowCount);
+        } catch (IOException e) {
+            logger.error("Error during RSTP CSV export", e);
+            throw e;
+        }
     }
 }

@@ -63,13 +63,17 @@ public class RSTPDiscoveryService {
             for (PlanetSwitchDevice device : rstpDevices) {
                 futures.add(executor.submit(() -> {
                     try {
-                        logger.info("Attempting SSH connection to {}", device.getIpAddress());
+                        logger.info("Attempting to get RSTP info for {} ({})", device.getDeviceName(), device.getIpAddress());
                         RSTPNode node = sshService.getRSTPInfo(device);
-                        logger.info("Successfully retrieved RSTP info from {}", device.getIpAddress());
+                        if (node != null) {
+                            logger.info("Successfully retrieved RSTP info from {} - Bridge: {}, Root: {}, Cost: {}",
+                                device.getIpAddress(), node.getBridgeId(), node.getRootBridgeId(), node.getRootCost());
+                        } else {
+                            logger.warn("getRSTPInfo returned null for {}", device.getIpAddress());
+                        }
                         return node;
                     } catch (IOException e) {
-                        logger.error("Failed to get RSTP info for {} ({}): {}",
-                                device.getDeviceName(), device.getIpAddress(), e.getMessage());
+                        logger.error("Failed to get RSTP info for {} ({}): {}", device.getDeviceName(), device.getIpAddress(), e.getMessage());
                         return null;
                     }
                 }));
@@ -81,10 +85,13 @@ public class RSTPDiscoveryService {
                     RSTPNode node = future.get(30, TimeUnit.SECONDS);
                     if (node != null) {
                         topology.addNode(node);
-                        logger.debug("Added node: {}", node.getDeviceName());
+                        logger.info("Added node to topology: {} (Bridge: {}, Root: {})",
+                            node.getDeviceName(), node.getBridgeId(), node.getRootBridgeId());
+                    } else {
+                        logger.warn("Received null node from future, skipping");
                     }
                 } catch (Exception e) {
-                    logger.error("Failed to get node", e);
+                    logger.error("Failed to get node from future: {}", e.getMessage(), e);
                     Thread.currentThread().interrupt();
                 }
             }
@@ -99,21 +106,48 @@ public class RSTPDiscoveryService {
 
     /**
      * Identifies the root bridge in the topology.
+     * The root bridge is either:
+     * 1. The device with rootCost = 0 (it IS the root bridge)
+     * 2. The device whose rootBridgeId matches its own bridgeId
+     * 3. The device with the lowest bridge priority (if root is not in our topology)
      */
     private void identifyRootBridge(RSTPTopology topology) {
         RSTPNode rootBridge = null;
-        for (RSTPNode node : topology.getNodes()) { // Root bridge has cost 0 to itself
+
+        // First, check if any device has cost 0 (it IS the root bridge)
+        for (RSTPNode node : topology.getNodes()) {
             if (node.getRootCost() == 0) {
                 rootBridge = node;
+                logger.info("Root bridge identified by cost=0: {}", rootBridge.getDeviceName());
                 break;
+            }
+        }
+
+        // If not found, check if any device's bridgeId matches its rootBridgeId
+        if (rootBridge == null) {
+            for (RSTPNode node : topology.getNodes()) {
+                if (node.getBridgeId() != null && node.getBridgeId().equals(node.getRootBridgeId())) {
+                    rootBridge = node;
+                    logger.info("Root bridge identified by matching Bridge ID: {}", rootBridge.getDeviceName());
+                    break;
+                }
             }
         }
 
         if (rootBridge != null) {
             topology.setRootBridge(rootBridge);
-            logger.info("Root bridge identified: {}", rootBridge.getDeviceName());
         } else {
-            logger.warn("No root bridge found in topology");
+            logger.warn("No root bridge found in discovered topology (root bridge may be on another device)");
         }
+    }
+
+    /**
+     * Shuts down the discovery service and cleans up all resources.
+     * This includes closing SSH connections managed by the SSH service.
+     */
+    public void shutdown() {
+        logger.info("Shutting down RSTPDiscoveryService");
+        sshService.shutdown();
+        logger.info("RSTPDiscoveryService shutdown complete");
     }
 }

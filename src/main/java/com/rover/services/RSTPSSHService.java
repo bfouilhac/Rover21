@@ -1,6 +1,5 @@
 package com.rover.services;
 
-import com.jcraft.jsch.Channel;
 import com.jcraft.jsch.ChannelShell;
 import com.jcraft.jsch.JSchException;
 import com.jcraft.jsch.Session;
@@ -13,7 +12,9 @@ import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -28,16 +29,13 @@ public class RSTPSSHService {
 
     private static final int INITIAL_WAIT_MS = 500;
     private static final int AFTER_COMMAND_WAIT_MS = 1250;
-    private static final int LOGIN_TIMEOUT_MS = 10000;
     private static final int PROMPT_WAIT_MS = 200;
     private static final int NO_DATA_TIMEOUT_MS = 1500;
     private static final int READ_BUFFER_SIZE = 8192;
-    private static final int MAX_LOGIN_ATTEMPTS = 3;
 
     private final SSHConnectionManager sshManager;
 
     // Regex patterns for parsing - Format 1 (IGS-6325)
-    private static final Pattern PROTOCOL_PATTERN = Pattern.compile("Protocol Version:\\s*(\\w+)");
     private static final Pattern BRIDGE_ID_PATTERN = Pattern.compile("Bridge ID\\s*:\\s*(\\d+)\\.(\\S+)");
     private static final Pattern ROOT_ID_PATTERN = Pattern.compile("Root ID\\s*:\\s*(\\d+)\\.(\\S+)");
     private static final Pattern ROOT_COST_PATTERN = Pattern.compile("Root PathCost:\\s*(\\d+)");
@@ -49,7 +47,9 @@ public class RSTPSSHService {
     private static final Pattern BRIDGE_ADDRESS_PATTERN = Pattern.compile("Address\\s+([a-f0-9:]+)", Pattern.CASE_INSENSITIVE);
     private static final Pattern ROOT_PRIORITY_PATTERN = Pattern.compile("Root ID\\s+Priority\\s+(\\d+)");
     private static final Pattern ROOT_COST_ALT_PATTERN = Pattern.compile("Cost\\s+(\\d+)");
-    private static final Pattern PORT_LINE_ALT_PATTERN = Pattern.compile("^\\s*(gi\\d+)\\s+(\\w+)\\s+\\d+\\.(\\d+)\\s+(\\d+)\\s+(\\w+)\\s+(\\w+).*");
+    private static final Pattern PORT_LINE_ALT_PATTERN = Pattern.compile("^\\s*(gi\\d+)\\s+(\\w+)\\s+(\\d+)\\.(\\d+)\\s+(\\d+)\\s+(\\w+)\\s+(\\w+).*");
+
+    private Map<String, ChannelShell> channels = new HashMap<>();
 
     public RSTPSSHService() {
         this.sshManager = new SSHConnectionManager();
@@ -80,33 +80,38 @@ public class RSTPSSHService {
             logger.info("SSH connected to: {}", device.getIpAddress());
 
             if (!session.isConnected()) {
-                throw new IOException("SSH session failed to connect");
+                logger.error("SSH session failed to connect while checking RSTP status");
+                return false;
             }
 
-            Channel channel = sshManager.openShellChannel(session);
+            ChannelShell channel = sshManager.openShellChannel(session);
             if (!channel.isConnected()) {
-                throw new IOException("SSH channel failed to connect");
+                logger.error("SSH channel failed to connect while checking RSTP status");
+                return false;
             }
+            channels.put(device.getMacAddress(), channel); // Saving this channel in our map
 
-            if (performAdaptiveLogin(channel.getInputStream(), channel.getOutputStream(), device.getUsername(), device.getPassword())) {
-                logger.info("Logged in: {}", device.getIpAddress());
-                String output = executeCommandInSession(channel.getInputStream(), channel.getOutputStream(), "show spanning-tree summary");
-                if (output.toLowerCase().contains("unknown command")) {
-                    logger.debug("Device {} does not support 'show spanning-tree summary', falling back to 'show spanning-tree'", device.getIpAddress());
-                    output = executeCommandInSession(channel.getInputStream(), channel.getOutputStream(), "show spanning-tree");
+            if (sshManager.handleSshAuthentication(channel, device.getIpAddress(), device.getUsername(), device.getPassword())){
+                logger.info("SSH authentication successful for {}", device.getIpAddress());
+                InputStream in = channel.getInputStream();
+                OutputStream out = channel.getOutputStream();
+                String output = executeCommandInSession(in, out, "show spanning-tree summary");
+                if (output.toLowerCase().contains("unknown command")){
+                    logger.info("Device {} does not support the summary spanning-tree command", device.getIpAddress());
+                    output = executeCommandInSession(in, out, "show spanning-tree");
                     enabled = output.contains("Spanning tree enabled mode RSTP");
                 } else {
                     enabled = output.contains("Protocol Version: RSTP") || output.contains("Protocol Version: Compatible");
                 }
             }
-
-            logger.info("Device {} RSTP enabled: {}", device.getIpAddress(), enabled);
+            logger.info("Device {} RSTP enabled ? {}", device.getIpAddress(), enabled);
             return enabled;
         } catch (Exception e) {
             logger.error("Failed to check RSTP status for {} - {}: {}", device.getIpAddress(), e.getClass().getSimpleName(), e.getMessage());
             Thread.currentThread().interrupt();
             return false;
         }
+
     }
 
     public RSTPNode getRSTPInfo(PlanetSwitchDevice device) throws IOException {
@@ -121,6 +126,7 @@ public class RSTPSSHService {
         ChannelShell channel = null;
 
         try {
+            // Create a new SSH connection for this operation
             session = sshManager.createSession(
                     device.getIpAddress(),
                     PreferencesManager.getSshPort(),
@@ -128,67 +134,57 @@ public class RSTPSSHService {
                     device.getPassword()
             );
             session.connect();
+            logger.debug("SSH session connected for getRSTPInfo: {}", device.getIpAddress());
 
             if (!session.isConnected()) {
-                throw new IOException("SSH session failed to connect");
+                logger.error("SSH session failed to connect during getRSTPInfo");
+                return null;
             }
 
             channel = sshManager.openShellChannel(session);
             if (!channel.isConnected()) {
-                throw new IOException("SSH channel failed to connect");
+                logger.error("SSH channel failed to connect during getRSTPInfo");
+                return null;
+            }
+
+            // Authenticate
+            if (!sshManager.handleSshAuthentication(channel, device.getIpAddress(), device.getUsername(), device.getPassword())) {
+                logger.error("SSH authentication failed during getRSTPInfo for {}", device.getIpAddress());
+                return null;
             }
 
             InputStream in = channel.getInputStream();
             OutputStream out = channel.getOutputStream();
 
-            Thread.sleep(INITIAL_WAIT_MS);
-
-            if (!performAdaptiveLogin(in, out, device.getUsername(), device.getPassword())) {
-                throw new IOException("Failed to login");
-            }
+            Thread.sleep(INITIAL_WAIT_MS); // 500ms
 
             sendLine(out, "terminal length 0");
-            Thread.sleep(PROMPT_WAIT_MS);
-            readAvailableData(in, new StringBuilder());
-
-            // Test if the summary command exists
-            logger.debug("Testing 'show spanning-tree summary' on {}", device.getIpAddress());
-            String summaryOutput = executeCommandInSession(in, out, "show spanning-tree summary");
-            boolean summarySupported = !summaryOutput.toLowerCase().contains("unknown command");
-
-            if (!summarySupported) {
-                Thread.sleep(PROMPT_WAIT_MS);
-                readAvailableData(in, new StringBuilder());
-            }
+            Thread.sleep(PROMPT_WAIT_MS); // 200ms
+            readAvailableData(in, new StringBuilder()); // Clear the buffer by reading all data
 
             // Always execute 'show spanning-tree' for details
             logger.debug("Executing 'show spanning-tree' on {}", device.getIpAddress());
             String detailOutput = executeCommandInSession(in, out, "show spanning-tree");
 
-            // Parse version from the appropriate source
-            if (summarySupported) {
-                logger.debug("Parsing version from summary output");
-                parseRSTPVersion(summaryOutput, node);
-            } else {
-                logger.debug("Summary not supported, parsing version from detail output");
-                parseRSTPVersionFromDetail(detailOutput, node);
-            }
-
             // Always parse details from 'show spanning-tree'
             parseSpanningTreeInfo(detailOutput, node);
 
-            logger.info("Successfully retrieved RSTP info for {}: version={}, cost={}, ports={}",
-                    device.getDeviceName(), node.getVersion(), node.getRootCost(), node.getPorts().size());
+            logger.info("Successfully retrieved RSTP info for {}: version={}, cost={}, ports={}", device.getDeviceName(), node.getVersion(), node.getRootCost(), node.getPorts().size());
 
-        } catch (JSchException e) {
-            logger.error("SSH connection failed for {}: {}", device.getIpAddress(), e.getMessage());
-            throw new IOException("SSH connection failed: " + e.getMessage(), e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             logger.error("Operation interrupted for {}", device.getIpAddress());
             throw new IOException("Operation interrupted", e);
+        } catch (Exception e) {
+            logger.error("Failed to get RSTP info for {}: {}", device.getIpAddress(), e.getMessage());
+            throw new IOException("Failed to get RSTP info", e);
         } finally {
-            sshManager.disconnect(channel, session);
+            if (channel != null && channel.isConnected()) {
+                channel.disconnect();
+            }
+            if (session != null && session.isConnected()) {
+                session.disconnect();
+            }
         }
 
         return node;
@@ -214,7 +210,6 @@ public class RSTPSSHService {
     /**
      * Executes a command and returns the output.
      *
-     * @param device the current device to execute the command on
      * @return the mac address table output
      * @throws IOException if ssh fails
      * @throws JSchException if the connection fails
@@ -227,32 +222,15 @@ public class RSTPSSHService {
     /**
      * Executes an SSH command and returns the output.
      *
-     * @param device the device to connect to
      * @param command the command to execute
      * @return command output
      * @throws IOException if SSH fails
-     * @throws JSchException if the connection fails
      * @throws InterruptedException if interrupted
      */
-    private String executeSshCommand(PlanetSwitchDevice device, String command) throws IOException, JSchException, InterruptedException {
+    private String executeSshCommand(PlanetSwitchDevice device, String command) throws IOException, InterruptedException {
 
-        Session session = null;
-        ChannelShell channel = null;
-
+        ChannelShell channel = channels.get(device.getMacAddress());
         try {
-            session = sshManager.createSession(
-                    device.getIpAddress(),
-                    PreferencesManager.getSshPort(),
-                    device.getUsername(),
-                    device.getPassword()
-            );
-            session.connect();
-
-            if (!session.isConnected()) {
-                throw new IOException("SSH session failed to connect");
-            }
-
-            channel = sshManager.openShellChannel(session);
             if (!channel.isConnected()) {
                 throw new IOException("SSH channel failed to connect");
             }
@@ -261,11 +239,6 @@ public class RSTPSSHService {
             OutputStream out = channel.getOutputStream();
 
             Thread.sleep(INITIAL_WAIT_MS);
-
-            // Perform login
-            if (!performAdaptiveLogin(in, out, device.getUsername(), device.getPassword())) {
-                throw new IOException("Failed to login");
-            }
 
             // Disable pagination
             sendLine(out, "terminal length 0");
@@ -286,232 +259,15 @@ public class RSTPSSHService {
             return result;
 
         } finally {
-            sshManager.disconnect(channel, session);
+            channel.disconnect();
         }
-    }
-
-    /**
-     * Performs adaptive login on the switch.
-     * <p>
-     * Handles devices with complex authentication flows, including those that:
-     * - Ask for username/password multiple times
-     * - Display "% Authentication Failed" as informational message before re-prompting
-     * - Require retry after initial authentication attempts
-     * </p>
-     *
-     * @param in the input stream from the SSH channel
-     * @param out the output stream to the SSH channel
-     * @param username the username to authenticate with
-     * @param password the password to authenticate with
-     * @return true if authentication succeeded, false otherwise
-     * @throws IOException if I/O errors occur
-     * @throws InterruptedException if the thread is interrupted
-     */
-    private boolean performAdaptiveLogin(InputStream in, OutputStream out,
-                                         String username, String password)
-            throws IOException, InterruptedException {
-
-        StringBuilder buffer = new StringBuilder();
-        long startTime = System.currentTimeMillis();
-        long lastActivityTime = System.currentTimeMillis();
-        int loginsSent = 0;
-        int passwordsSent = 0;
-        boolean authenticationFailedSeen = false;
-
-        logger.debug("Starting adaptive login process");
-
-        while (System.currentTimeMillis() - startTime < LOGIN_TIMEOUT_MS) {
-            boolean dataRead = readAvailableData(in, buffer);
-
-            if (dataRead) {
-                lastActivityTime = System.currentTimeMillis();
-            }
-
-            String text = buffer.toString().toLowerCase();
-            String recentText = getRecentText(buffer, 200);
-
-            // Log the current buffer state for debugging
-            if (dataRead && logger.isTraceEnabled()) {
-                logger.trace("Buffer content (last 100 chars): {}",
-                    text.length() > 100 ? text.substring(text.length() - 100) : text);
-            }
-
-            // Check if we're logged in successfully (shell prompt detected)
-            if (isShellPromptDetected(recentText)) {
-                logger.info("Login successful - shell prompt detected");
-                return true;
-            }
-
-            // Detect "% Authentication Failed" message - this is informational, not terminal
-            if (detectAuthenticationFailedMessage(text, recentText)) {
-                if (!authenticationFailedSeen) {
-                    logger.debug("'Authentication Failed' message detected - device will re-prompt");
-                    authenticationFailedSeen = true;
-                }
-                // Clear old buffer content but continue listening for new prompts
-                if (buffer.length() > 500) {
-                    buffer.delete(0, buffer.length() - 200);
-                }
-                Thread.sleep(PROMPT_WAIT_MS);
-                continue;
-            }
-
-            // Handle username/login prompt
-            if (detectUsernamePrompt(recentText)) {
-                if (loginsSent >= MAX_LOGIN_ATTEMPTS) {
-                    logger.error("Maximum login attempts ({}) reached", MAX_LOGIN_ATTEMPTS);
-                    return false;
-                }
-
-                loginsSent++;
-                logger.debug("Username prompt detected (attempt {})", loginsSent);
-                sendLine(out, username);
-                buffer.setLength(0); // Clear buffer after sending
-                authenticationFailedSeen = false; // Reset flag
-                Thread.sleep(PROMPT_WAIT_MS);
-                continue;
-            }
-
-            // Handle password prompt
-            if (detectPasswordPrompt(recentText)) {
-                if (passwordsSent >= MAX_LOGIN_ATTEMPTS) {
-                    logger.error("Maximum password attempts ({}) reached", MAX_LOGIN_ATTEMPTS);
-                    return false;
-                }
-
-                passwordsSent++;
-                logger.debug("Password prompt detected (attempt {})", passwordsSent);
-                sendLine(out, password);
-                buffer.setLength(0); // Clear buffer after sending
-                Thread.sleep(PROMPT_WAIT_MS);
-                continue;
-            }
-
-            // Check for terminal authentication failure (access denied after all attempts)
-            if (detectTerminalAuthFailure(text, loginsSent, passwordsSent)) {
-                logger.error("Login failed - credentials permanently rejected");
-                return false;
-            }
-
-            // Check for inactivity timeout
-            if (System.currentTimeMillis() - lastActivityTime > 3000 && loginsSent > 0) {
-                logger.warn("No activity for 3 seconds after sending credentials");
-                if (buffer.length() < 20) {
-                    // No meaningful data received - likely connection issue
-                    return false;
-                }
-            }
-
-            Thread.sleep(100);
-        }
-
-        logger.error("Login timeout ({} ms) - no successful authentication", LOGIN_TIMEOUT_MS);
-        logger.debug("Final buffer content: {}", buffer.toString());
-        return false;
-    }
-
-    /**
-     * Gets the most recent text from the buffer to avoid false positives from old content.
-     *
-     * @param buffer the full buffer
-     * @param maxChars maximum number of recent characters to return
-     * @return the recent text from the buffer
-     */
-    private String getRecentText(StringBuilder buffer, int maxChars) {
-        int length = buffer.length();
-        if (length <= maxChars) {
-            return buffer.toString().toLowerCase();
-        }
-        return buffer.substring(length - maxChars).toLowerCase();
-    }
-
-    /**
-     * Detects if a shell prompt is present in the text.
-     * Shell prompts typically end with #, >, or $ characters.
-     *
-     * @param text the text to check (should be recent text, not full buffer)
-     * @return true if shell prompt detected
-     */
-    private boolean isShellPromptDetected(String text) {
-        // Look for prompt patterns at the end of recent text
-        String trimmed = text.trim();
-        return trimmed.endsWith("#") ||
-               trimmed.endsWith(">") ||
-               trimmed.matches(".*[a-z0-9_-]+[#>]\\s*$");
-    }
-
-    /**
-     * Detects the "% Authentication Failed" informational message.
-     * This message appears on some devices BEFORE re-prompting for credentials.
-     *
-     * @param fullText the full buffer text
-     * @param recentText the recent buffer text
-     * @return true if authentication failed message detected
-     */
-    private boolean detectAuthenticationFailedMessage(String fullText, String recentText) {
-        return recentText.contains("% authentication failed") ||
-               recentText.contains("%authentication failed") ||
-               recentText.contains("authentication failed");
-    }
-
-    /**
-     * Detects username/login prompts.
-     *
-     * @param text the text to check (recent text recommended)
-     * @return true if username prompt detected
-     */
-    private boolean detectUsernamePrompt(String text) {
-        return text.contains("login:") ||
-               text.contains("username:") ||
-               text.contains("user name:");
-    }
-
-    /**
-     * Detects password prompts.
-     *
-     * @param text the text to check (recent text recommended)
-     * @return true if password prompt detected
-     */
-    private boolean detectPasswordPrompt(String text) {
-        return text.contains("password:");
-    }
-
-    /**
-     * Detects terminal authentication failure (permanent rejection).
-     * This is different from "% Authentication Failed" which is just informational.
-     *
-     * @param text the full text buffer
-     * @param loginsSent number of login attempts made
-     * @param passwordsSent number of password attempts made
-     * @return true if authentication has permanently failed
-     */
-    private boolean detectTerminalAuthFailure(String text, int loginsSent, int passwordsSent) {
-        // Only consider it a terminal failure if we've made attempts and see these keywords
-        if (loginsSent == 0 && passwordsSent == 0) {
-            return false;
-        }
-
-        // Look for definitive rejection messages
-        boolean hasRejectionKeyword = text.contains("access denied") ||
-                                      text.contains("incorrect") ||
-                                      text.contains("invalid credentials") ||
-                                      text.contains("login incorrect");
-
-        // Additional check: if we've exceeded attempts and see generic "denied"
-        if ((loginsSent >= MAX_LOGIN_ATTEMPTS || passwordsSent >= MAX_LOGIN_ATTEMPTS) &&
-            text.contains("denied")) {
-            return true;
-        }
-
-        return hasRejectionKeyword;
     }
 
     /**
      * Reads command output from the stream.
      * Stops as soon as no more data is available (non-blocking).
      */
-    private void readCommandOutput(InputStream in, StringBuilder output)
-            throws IOException, InterruptedException {
+    private void readCommandOutput(InputStream in, StringBuilder output) throws IOException, InterruptedException {
 
         long lastReadTime = System.currentTimeMillis();
         int consecutiveEmptyReads = 0;
@@ -578,49 +334,28 @@ public class RSTPSSHService {
     }
 
     /**
-     * Parses RSTP version from summary output.
-     */
-    private void parseRSTPVersion(String output, RSTPNode node) {
-        Matcher matcher = PROTOCOL_PATTERN.matcher(output);
-        if (matcher.find()) {
-            String version = matcher.group(1);
-            if ("RSTP".equalsIgnoreCase(version)) {
-                node.setVersion(RSTPVersion.RSTP);
-            } else if ("Compatible".equalsIgnoreCase(version)) {
-                node.setVersion(RSTPVersion.STP);
-            }
-        }
-    }
-
-    /**
-     * Parses RSTP version from detail output (for switches without a summary command).
-     * Format: "Spanning tree enabled mode RSTP"
-     */
-    private void parseRSTPVersionFromDetail(String output, RSTPNode node) {
-        if (output.contains("enabled mode RSTP")) {
-            node.setVersion(RSTPVersion.RSTP);
-            logger.debug("Detected RSTP from detail output");
-        } else if (output.contains("enabled mode STP")) {
-            node.setVersion(RSTPVersion.STP);
-            logger.debug("Detected STP from detail output");
-        } else if (output.contains("enabled mode MSTP")) {
-            node.setVersion(RSTPVersion.MSTP);
-            logger.debug("Detected MSTP from detail output");
-        }
-    }
-
-    /**
      * Parses spanning tree detailed information.
      * Supports both Format 1 (IGS-6325) and Format 2.
      */
     private void parseSpanningTreeInfo(String output, RSTPNode node) {
         // Detect a format by checking for colon-based syntax
-        boolean isFormat1 = output.contains("Bridge ID    :");
+        boolean isFormat1 = output.contains("CIST Bridge STP Status");
 
         if (isFormat1) {
+            logger.info("RSTP response format 1 detected");
             parseFormat1(output, node);
+            node.setVersion(RSTPVersion.RSTP);
         } else {
+            logger.info("RSTP response format 2 detected");
             parseFormat2(output, node);
+            // Detect version from output
+            if (output.contains("Spanning tree enabled mode RSTP")) {
+                node.setVersion(RSTPVersion.RSTP);
+            } else if (output.contains("Spanning tree enabled mode MSTP")) {
+                node.setVersion(RSTPVersion.MSTP);
+            } else if (output.contains("Spanning tree enabled mode STP")) {
+                node.setVersion(RSTPVersion.STP);
+            }
         }
     }
 
@@ -637,6 +372,7 @@ public class RSTPSSHService {
                 String priority = bridgeMatcher.group(1);
                 String mac = bridgeMatcher.group(2).replace("-", ":");
                 node.setBridgeId(priority + "." + mac);
+                logger.debug("Format 1: Bridge ID set to {}", priority + "." + mac);
             }
 
             Matcher rootMatcher = ROOT_ID_PATTERN.matcher(line);
@@ -644,16 +380,19 @@ public class RSTPSSHService {
                 String priority = rootMatcher.group(1);
                 String mac = rootMatcher.group(2).replace("-", ":");
                 node.setRootBridgeId(priority + "." + mac);
+                logger.debug("Format 1: Root ID set to {}", priority + "." + mac);
             }
 
             Matcher rootCostMatcher = ROOT_COST_PATTERN.matcher(line);
             if (rootCostMatcher.find()) {
                 node.setRootCost(Integer.parseInt(rootCostMatcher.group(1)));
+                logger.debug("Format 1: Root Cost set to {}", rootCostMatcher.group(1));
             }
 
             Matcher maxHopsMatcher = MAX_HOPS_PATTERN.matcher(line);
             if (maxHopsMatcher.find()) {
                 node.setHopCount(Integer.parseInt(maxHopsMatcher.group(1)));
+                logger.debug("Format 1: Hop Count set to {}", maxHopsMatcher.group(1));
             }
         }
 
@@ -739,6 +478,7 @@ public class RSTPSSHService {
                 Matcher costMatcher = ROOT_COST_ALT_PATTERN.matcher(line);
                 if (costMatcher.find()) {
                     node.setRootCost(Integer.parseInt(costMatcher.group(1)));
+                    logger.debug("Format 2: Root Cost set to {}", costMatcher.group(1));
                 }
             }
 
@@ -747,6 +487,7 @@ public class RSTPSSHService {
                 Matcher hopMatcher = Pattern.compile("Max Age\\s+(\\d+)").matcher(line);
                 if (hopMatcher.find()) {
                     node.setHopCount(Integer.parseInt(hopMatcher.group(1)));
+                    logger.debug("Format 2: Hop Count set to {}", hopMatcher.group(1));
                 }
             }
         }
@@ -754,9 +495,11 @@ public class RSTPSSHService {
         // Set Bridge ID and Root ID
         if (bridgePriority != null && bridgeAddress != null) {
             node.setBridgeId(bridgePriority + "." + bridgeAddress);
+            logger.debug("Format 2: Bridge ID set to {}", bridgePriority + "." + bridgeAddress);
         }
         if (rootPriority != null && rootAddress != null) {
             node.setRootBridgeId(rootPriority + "." + rootAddress);
+            logger.debug("Format 2: Root ID set to {}", rootPriority + "." + rootAddress);
         }
 
         // Parse port table (Format 2)
@@ -821,6 +564,7 @@ public class RSTPSSHService {
 
     /**
      * Parses a single port line from Format 2 output
+     * Format: "     gi1  enabled   128.1     20000   Frw   Desg       No P2P (RSTP)"
      */
     private RSTPPort parsePortLineFormat2(String line) {
         Matcher matcher = PORT_LINE_ALT_PATTERN.matcher(line.trim());
@@ -829,13 +573,16 @@ public class RSTPSSHService {
         }
 
         try {
-            String portName = matcher.group(1).trim(); // "gi2"
-            int pathCost = Integer.parseInt(matcher.group(4)); // "20000"
-            String stateShort = matcher.group(5); // "Frw"/"Dis"
-            String role = matcher.group(6); // "Root"/"Desg"
+            String portName = matcher.group(1).trim(); // "gi1"
+            String state = matcher.group(2); // "enabled"/"disabled"
+            String priority = matcher.group(3); // "128"
+            String portNum = matcher.group(4); // "1"
+            int pathCost = Integer.parseInt(matcher.group(5)); // "20000"
+            String stateShort = matcher.group(6); // "Frw"/"Dis"
+            String role = matcher.group(7); // "Root"/"Desg"
 
-            // Extract port number from "gi2" -> 2
-            int portNumber = Integer.parseInt(portName.replace("\\D", ""));
+            // Use the port number from priority.number format
+            int portNumber = Integer.parseInt(portNum);
 
             RSTPPort port = new RSTPPort(portNumber);
             port.setPathCost(pathCost);
@@ -947,5 +694,28 @@ public class RSTPSSHService {
     private void sendLine(OutputStream out, String text) throws IOException {
         out.write((text + "\n").getBytes());
         out.flush();
+    }
+
+    /**
+     * Closes all active SSH channels and clears the channel map.
+     * Should be called when the RSTP topology dialog is closed.
+     */
+    public void shutdown() {
+        logger.info("Shutting down RSTPSSHService, closing {} active channels", channels.size());
+
+        for (Map.Entry<String, ChannelShell> entry : channels.entrySet()) {
+            try {
+                ChannelShell channel = entry.getValue();
+                if (channel != null && channel.isConnected()) {
+                    channel.disconnect();
+                    logger.debug("Closed SSH channel for device: {}", entry.getKey());
+                }
+            } catch (Exception e) {
+                logger.error("Error closing SSH channel for device {}: {}", entry.getKey(), e.getMessage());
+            }
+        }
+
+        channels.clear();
+        logger.info("RSTPSSHService shutdown complete");
     }
 }

@@ -244,7 +244,7 @@ public class PreferencesDialog extends JDialog {
         gbc.gridx = 1;
         snmpVersionComboBox = new JComboBox<>(new String[]{"v1", "v2c", "v3"});
         snmpVersionComboBox.setPreferredSize(new Dimension(100, FIELD_HEIGHT));
-        snmpVersionComboBox.addActionListener(e -> toggleSnmpV3Fields());
+        snmpVersionComboBox.addActionListener(_ -> toggleSnmpV3Fields());
         panel.add(snmpVersionComboBox, gbc);
 
         gbc.gridx = 2;
@@ -420,13 +420,13 @@ public class PreferencesDialog extends JDialog {
         gbc.weightx = 0;
         JButton addButton = new JButton(lang.get("button.add"));
         addButton.setPreferredSize(new Dimension(SMALL_BUTTON_WIDTH, FIELD_HEIGHT));
-        addButton.addActionListener(e -> addCustomAccount());
+        addButton.addActionListener(_ -> addCustomAccount());
         panel.add(addButton, gbc);
 
         gbc.gridx = 2;
         JButton viewButton = new JButton(lang.get("button.view"));
         viewButton.setPreferredSize(new Dimension(SMALL_BUTTON_WIDTH, FIELD_HEIGHT));
-        viewButton.addActionListener(e -> viewCustomCredentials());
+        viewButton.addActionListener(_ -> viewCustomCredentials());
         panel.add(viewButton, gbc);
     }
 
@@ -468,7 +468,7 @@ public class PreferencesDialog extends JDialog {
         gbc.weightx = 0;
         JButton browseButton = new JButton(lang.get("preferences.browse"));
         browseButton.setPreferredSize(new Dimension(BUTTON_WIDTH, FIELD_HEIGHT));
-        browseButton.addActionListener(e -> browseForConfigPath());
+        browseButton.addActionListener(_ -> browseForConfigPath());
         panel.add(browseButton, gbc);
     }
 
@@ -503,14 +503,14 @@ public class PreferencesDialog extends JDialog {
         okButton.setPreferredSize(new Dimension(BUTTON_WIDTH, BUTTON_HEIGHT));
         cancelButton.setPreferredSize(new Dimension(BUTTON_WIDTH, BUTTON_HEIGHT));
 
-        okButton.addActionListener(e -> {
+        okButton.addActionListener(_ -> {
             savePreferences();
             applied = true;
             logger.info("Preferences saved and dialog closed");
             dispose();
         });
 
-        cancelButton.addActionListener(e -> {
+        cancelButton.addActionListener(_ -> {
             applied = false;
             logger.info("Preferences dialog cancelled");
             dispose();
@@ -657,7 +657,7 @@ public class PreferencesDialog extends JDialog {
     /**
      * Displays a warning dialog.
      *
-     * @param title   the dialog title
+     * @param title the dialog title
      * @param message the warning message
      */
     private void showWarning(String title, String message) {
@@ -667,7 +667,7 @@ public class PreferencesDialog extends JDialog {
     /**
      * Displays an information dialog.
      *
-     * @param title   the dialog title
+     * @param title the dialog title
      * @param message the information message
      */
     private void showInfo(String title, String message) {
