@@ -50,6 +50,7 @@ public class RSTPTopologyDialog extends JDialog {
     private static final int COL_HOP_COUNT = 5;
     private static final int COL_ROOT_MAC = 6;
     private static final int COL_PATH_COST = 7;
+    private static final int COL_TC_TIME = 8;
 
     private final transient LanguageManager lang = LanguageManager.getInstance();
     private final transient RSTPDiscoveryService discoveryService;
@@ -137,7 +138,8 @@ public class RSTPTopologyDialog extends JDialog {
                 lang.get("table.priority"),
                 lang.get("table.hop_count"),
                 lang.get("table.root_bridge"),
-                lang.get("table.path_cost")
+                lang.get("table.path_cost"),
+                lang.get("table.tc_time")
         };
 
         tableModel = new DefaultTableModel(columns, 0) {
@@ -202,7 +204,7 @@ public class RSTPTopologyDialog extends JDialog {
             rstpTable.getColumnModel().getColumn(i).setCellRenderer(centerRenderer);
         }
 
-        int[] columnWidths = {160, 140, 120, 100, 80, 100, 140, 100};
+        int[] columnWidths = {160, 140, 120, 100, 80, 100, 140, 100, 120};
         for (int i = 0; i < columnWidths.length; i++) {
             rstpTable.getColumnModel().getColumn(i).setPreferredWidth(columnWidths[i]);
         }
@@ -398,7 +400,7 @@ public class RSTPTopologyDialog extends JDialog {
         logger.info("Displaying basic info for {} SSH-capable devices", sshDevices.size());
 
         for (PlanetSwitchDevice device : sshDevices) {
-            Object[] row = new Object[8];
+            Object[] row = new Object[9];
 
             row[COL_DEVICE_NAME] = device.getDeviceName();
             row[COL_MAC] = device.getMacAddress();
@@ -408,6 +410,7 @@ public class RSTPTopologyDialog extends JDialog {
             row[COL_HOP_COUNT] = "-";
             row[COL_ROOT_MAC] = "-";
             row[COL_PATH_COST] = "-";
+            row[COL_TC_TIME] = "-";
 
             tableModel.addRow(row);
         }
@@ -431,6 +434,7 @@ public class RSTPTopologyDialog extends JDialog {
                 tableModel.setValueAt(node.getHopCount() > 0 ? String.valueOf(node.getHopCount()) : "-", row, COL_HOP_COUNT);
                 tableModel.setValueAt(extractMac(node.getRootBridgeId()).toUpperCase(), row, COL_ROOT_MAC);
                 tableModel.setValueAt(String.valueOf(node.getRootCost()), row, COL_PATH_COST);
+                tableModel.setValueAt(node.getTopologyChangeTime() != null ? node.getTopologyChangeTime() : "-", row, COL_TC_TIME);
             }
         }
 

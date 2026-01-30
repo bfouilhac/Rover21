@@ -40,6 +40,7 @@ public class RSTPSSHService {
     private static final Pattern ROOT_ID_PATTERN = Pattern.compile("Root ID\\s*:\\s*(\\d+)\\.(\\S+)");
     private static final Pattern ROOT_COST_PATTERN = Pattern.compile("Root PathCost:\\s*(\\d+)");
     private static final Pattern MAX_HOPS_PATTERN = Pattern.compile("Max Hops\\s*:\\s*(\\d+)");
+    private static final Pattern TC_LAST_PATTERN = Pattern.compile("TC Last\\s*:\\s*(.+)");
     private static final Pattern PORT_LINE_PATTERN = Pattern.compile("^(\\S+\\s+\\d+/\\d+)\\s+(\\w+)\\s+(\\w+)\\s+(\\d+)\\s+(\\d+)\\s+(\\w+)\\s+(\\w+).*");
 
     // Regex patterns for Format 2 - multiline bridge/root info
@@ -47,6 +48,7 @@ public class RSTPSSHService {
     private static final Pattern BRIDGE_ADDRESS_PATTERN = Pattern.compile("Address\\s+([a-f0-9:]+)", Pattern.CASE_INSENSITIVE);
     private static final Pattern ROOT_PRIORITY_PATTERN = Pattern.compile("Root ID\\s+Priority\\s+(\\d+)");
     private static final Pattern ROOT_COST_ALT_PATTERN = Pattern.compile("Cost\\s+(\\d+)");
+    private static final Pattern TOPOLOGY_CHANGE_PATTERN = Pattern.compile("last change occurred\\s+(.+?)\\s+ago");
     private static final Pattern PORT_LINE_ALT_PATTERN = Pattern.compile("^\\s*(gi\\d+)\\s+(\\w+)\\s+(\\d+)\\.(\\d+)\\s+(\\d+)\\s+(\\w+)\\s+(\\w+).*");
 
     private Map<String, ChannelShell> channels = new HashMap<>();
@@ -394,6 +396,14 @@ public class RSTPSSHService {
                 node.setHopCount(Integer.parseInt(maxHopsMatcher.group(1)));
                 logger.debug("Format 1: Hop Count set to {}", maxHopsMatcher.group(1));
             }
+
+            Matcher tcLastMatcher = TC_LAST_PATTERN.matcher(line);
+            if (tcLastMatcher.find()) {
+                String rawTime = tcLastMatcher.group(1).trim();
+                String formattedTime = formatTopologyChangeTime(rawTime);
+                node.setTopologyChangeTime(formattedTime);
+                logger.debug("Format 1: TC Last set to {} (raw: {})", formattedTime, rawTime);
+            }
         }
 
         // Parse port table
@@ -489,6 +499,15 @@ public class RSTPSSHService {
                     node.setHopCount(Integer.parseInt(hopMatcher.group(1)));
                     logger.debug("Format 2: Hop Count set to {}", hopMatcher.group(1));
                 }
+            }
+
+            // Parse topology change time
+            Matcher tcMatcher = TOPOLOGY_CHANGE_PATTERN.matcher(line);
+            if (tcMatcher.find()) {
+                String rawTime = tcMatcher.group(1).trim();
+                String formattedTime = formatTopologyChangeTime(rawTime);
+                node.setTopologyChangeTime(formattedTime);
+                logger.debug("Format 2: Topology Change Time set to {} (raw: {})", formattedTime, rawTime);
             }
         }
 
@@ -694,6 +713,56 @@ public class RSTPSSHService {
     private void sendLine(OutputStream out, String text) throws IOException {
         out.write((text + "\n").getBytes());
         out.flush();
+    }
+
+    /**
+     * Formats a topology change time string to standardized format DD:HH:MM:SS.
+     * <p>
+     * Supports two input formats:
+     * - Format 1: "0d 00:23:10" (days + time)
+     * - Format 2: "00:23:18" (time only, assumes 0 days)
+     * </p>
+     *
+     * @param tcTime the raw topology change time string
+     * @return formatted time as "DD:HH:MM:SS", or the original string if parsing fails
+     */
+    private String formatTopologyChangeTime(String tcTime) {
+        if (tcTime == null || tcTime.trim().isEmpty()) {
+            return "00:00:00:00";
+        }
+
+        try {
+            String trimmed = tcTime.trim();
+            int days = 0;
+            String timePart;
+
+            // Format 1: "0d 00:23:10" or "4d 14:35:02"
+            if (trimmed.matches("\\d+d\\s+.*")) {
+                String[] parts = trimmed.split("d\\s+");
+                days = Integer.parseInt(parts[0]);
+                timePart = parts[1];
+            }
+            // Format 2: "00:23:18" (time only)
+            else {
+                timePart = trimmed;
+            }
+
+            // Parse time part (HH:MM:SS)
+            String[] timeParts = timePart.split(":");
+            if (timeParts.length >= 3) {
+                int hours = Integer.parseInt(timeParts[0].trim());
+                int minutes = Integer.parseInt(timeParts[1].trim());
+                int seconds = Integer.parseInt(timeParts[2].trim());
+
+                return String.format("%02d:%02d:%02d:%02d", days, hours, minutes, seconds);
+            }
+
+        } catch (Exception e) {
+            logger.warn("Failed to parse topology change time '{}': {}", tcTime, e.getMessage());
+        }
+
+        // Return original if parsing fails
+        return tcTime;
     }
 
     /**

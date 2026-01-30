@@ -32,6 +32,11 @@ public class RSTPDiscoveryService {
 
     /**
      * Discovers RSTP topology from a list of devices.
+     * <p>
+     * Optimized version using adaptive thread pool where each thread handles:
+     * 1. RSTP version check
+     * 2. Information retrieval if RSTP is enabled
+     * </p>
      *
      * @param devices list of devices to analyze
      * @return complete RSTP topology
@@ -41,45 +46,33 @@ public class RSTPDiscoveryService {
 
         RSTPTopology topology = new RSTPTopology();
 
-        // Filter devices with SSH and RSTP enabled
-        List<PlanetSwitchDevice> rstpDevices = devices.stream()
+        // Filter devices with SSH capabilities
+        List<PlanetSwitchDevice> sshDevices = devices.stream()
                 .filter(d -> d.isSSHUp() &&
                         d.getUsername() != null &&
-                        d.getPassword() != null &&
-                        sshService.isRSTPEnabled(d))
+                        d.getPassword() != null)
                 .toList();
 
-        if (rstpDevices.isEmpty()) {
-            logger.warn("No devices with RSTP enabled found");
+        if (sshDevices.isEmpty()) {
+            logger.warn("No devices with SSH available");
             return topology;
         }
 
-        logger.info("Found {} devices with RSTP enabled", rstpDevices.size());
+        logger.info("Found {} SSH-capable devices, checking RSTP in parallel", sshDevices.size());
 
-        // Parallelize discovery for speed (Java 19+ try-with-resources)
-        try (ExecutorService executor = Executors.newFixedThreadPool(Math.min(5, rstpDevices.size()))) {
+        // Adaptive thread pool: min(device count, 20 threads max)
+        int threadPoolSize = Math.min(sshDevices.size(), 20);
+        logger.info("Creating adaptive thread pool with {} threads", threadPoolSize);
+
+        try (ExecutorService executor = Executors.newFixedThreadPool(threadPoolSize)) {
             List<Future<RSTPNode>> futures = new ArrayList<>();
 
-            for (PlanetSwitchDevice device : rstpDevices) {
-                futures.add(executor.submit(() -> {
-                    try {
-                        logger.info("Attempting to get RSTP info for {} ({})", device.getDeviceName(), device.getIpAddress());
-                        RSTPNode node = sshService.getRSTPInfo(device);
-                        if (node != null) {
-                            logger.info("Successfully retrieved RSTP info from {} - Bridge: {}, Root: {}, Cost: {}",
-                                device.getIpAddress(), node.getBridgeId(), node.getRootBridgeId(), node.getRootCost());
-                        } else {
-                            logger.warn("getRSTPInfo returned null for {}", device.getIpAddress());
-                        }
-                        return node;
-                    } catch (IOException e) {
-                        logger.error("Failed to get RSTP info for {} ({}): {}", device.getDeviceName(), device.getIpAddress(), e.getMessage());
-                        return null;
-                    }
-                }));
+            // Each thread handles complete device processing
+            for (PlanetSwitchDevice device : sshDevices) {
+                futures.add(executor.submit(() -> processDevice(device)));
             }
 
-            // Collect results with a longer timeout
+            // Collect results with timeout
             for (Future<RSTPNode> future : futures) {
                 try {
                     RSTPNode node = future.get(30, TimeUnit.SECONDS);
@@ -87,11 +80,9 @@ public class RSTPDiscoveryService {
                         topology.addNode(node);
                         logger.info("Added node to topology: {} (Bridge: {}, Root: {})",
                             node.getDeviceName(), node.getBridgeId(), node.getRootBridgeId());
-                    } else {
-                        logger.warn("Received null node from future, skipping");
                     }
                 } catch (Exception e) {
-                    logger.error("Failed to get node from future: {}", e.getMessage(), e);
+                    logger.error("Failed to get node from future: {}", e.getMessage());
                     Thread.currentThread().interrupt();
                 }
             }
@@ -102,6 +93,47 @@ public class RSTPDiscoveryService {
         logger.info("Topology discovery complete: {} nodes", topology.getNodeCount());
 
         return topology;
+    }
+
+    /**
+     * Processes a single device: checks RSTP enablement and retrieves info if enabled.
+     * <p>
+     * This method is called by each worker thread in the pool.
+     * </p>
+     *
+     * @param device the device to process
+     * @return RSTPNode if RSTP is enabled and info retrieved successfully, null otherwise
+     */
+    private RSTPNode processDevice(PlanetSwitchDevice device) {
+        try {
+            logger.info("Processing device: {} ({})", device.getDeviceName(), device.getIpAddress());
+
+            // Step 1: Check if RSTP is enabled
+            boolean rstpEnabled = sshService.isRSTPEnabled(device);
+
+            if (!rstpEnabled) {
+                logger.info("RSTP not enabled on {} ({})", device.getDeviceName(), device.getIpAddress());
+                return null;
+            }
+
+            logger.info("RSTP enabled on {}, retrieving info...", device.getIpAddress());
+
+            // Step 2: Retrieve RSTP information
+            RSTPNode node = sshService.getRSTPInfo(device);
+
+            if (node != null) {
+                logger.info("Successfully retrieved RSTP info from {} - Bridge: {}, Root: {}, Cost: {}",
+                    device.getIpAddress(), node.getBridgeId(), node.getRootBridgeId(), node.getRootCost());
+            } else {
+                logger.warn("getRSTPInfo returned null for {}", device.getIpAddress());
+            }
+
+            return node;
+
+        } catch (Exception e) {
+            logger.error("Failed to process device {} ({}): {}", device.getDeviceName(), device.getIpAddress(), e.getMessage());
+            return null;
+        }
     }
 
     /**

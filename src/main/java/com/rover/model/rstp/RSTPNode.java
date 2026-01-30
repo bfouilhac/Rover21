@@ -23,6 +23,7 @@ public class RSTPNode {
     private int hopCount;
     private boolean isRootBridge;
     private RSTPVersion version;
+    private String topologyChangeTime;
 
     private List<RSTPPort> ports;
 
@@ -84,6 +85,14 @@ public class RSTPNode {
 
     public void setVersion(RSTPVersion version) {
         this.version = version;
+    }
+
+    public String getTopologyChangeTime() {
+        return topologyChangeTime;
+    }
+
+    public void setTopologyChangeTime(String topologyChangeTime) {
+        this.topologyChangeTime = topologyChangeTime;
     }
 
     public List<RSTPPort> getPorts() {

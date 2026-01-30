@@ -54,6 +54,9 @@ public class MainWindow extends JFrame {
     private static final int COMBO_BOX_WIDTH = 400;
     private static final int COMBO_BOX_HEIGHT = 30;
 
+    private static final int LOGO_WIDTH = 195;
+    private static final int LOGO_HEIGHT = 50;
+
     // Table column indices
     private static final int COL_LOCK = 0;
     private static final int COL_DEVICE_NAME = 1;
@@ -591,13 +594,14 @@ public class MainWindow extends JFrame {
     }
 
     /**
-     * Creates the toolbar with adapter selection and discover button.
+     * Creates the toolbar with adapter selection, company logos, and discover button.
      */
     private void createToolbar() {
         JPanel toolbar = new JPanel(new BorderLayout());
         toolbar.setBorder(new EmptyBorder(12, 15, 12, 15));
 
         toolbar.add(createToolbarLeftPanel(), BorderLayout.WEST);
+        toolbar.add(createToolbarCenterPanel(), BorderLayout.CENTER);
         toolbar.add(createToolbarRightPanel(), BorderLayout.EAST);
 
         add(toolbar, BorderLayout.NORTH);
@@ -658,6 +662,61 @@ public class MainWindow extends JFrame {
         button.setToolTipText(lang.get("toolbar.refresh_adapters_tip"));
         button.addActionListener(e -> handleRefreshAdapters());
         return button;
+    }
+
+    /**
+     * Creates the center panel of the toolbar with company logos.
+     */
+    private JPanel createToolbarCenterPanel() {
+        JPanel centerPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 0));
+
+        // Load and add PLANET logo
+        JLabel planetLogo = createLogoLabel("/images/planet_logo_png.png", "PLANET Logo");
+        if (planetLogo != null) {
+            centerPanel.add(planetLogo);
+        }
+
+        // Load and add ADM21 logo
+        JLabel adm21Logo = createLogoLabel("/images/adm21_logo_png.png", "ADM21 Logo");
+        if (adm21Logo != null) {
+            centerPanel.add(adm21Logo);
+        }
+
+        return centerPanel;
+    }
+
+    /**
+     * Creates a JLabel with a logo image loaded from resources.
+     * <p>
+     * The image is scaled to LOGO_WIDTH x LOGO_HEIGHT while maintaining aspect ratio.
+     * </p>
+     *
+     * @param resourcePath the path to the image resource (e.g., "/images/logo.png")
+     * @param altText alternative text for the image
+     * @return JLabel containing the scaled image, or null if loading fails
+     */
+    private JLabel createLogoLabel(String resourcePath, String altText) {
+        try {
+            java.net.URL imageUrl = getClass().getResource(resourcePath);
+            if (imageUrl == null) {
+                logger.warn("Logo image not found: {}", resourcePath);
+                return null;
+            }
+
+            ImageIcon originalIcon = new ImageIcon(imageUrl);
+            Image scaledImage = originalIcon.getImage().getScaledInstance(
+                LOGO_WIDTH, LOGO_HEIGHT, Image.SCALE_SMOOTH
+            );
+
+            JLabel label = new JLabel(new ImageIcon(scaledImage));
+            label.setToolTipText(altText);
+
+            return label;
+
+        } catch (Exception e) {
+            logger.error("Failed to load logo image {}: {}", resourcePath, e.getMessage());
+            return null;
+        }
     }
 
     /**
