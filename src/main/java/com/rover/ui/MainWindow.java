@@ -37,8 +37,27 @@ public class MainWindow extends JFrame {
     private static final Font FONT_MODERN = new Font("Segoe UI", Font.PLAIN, 13);
     private static final Font FONT_TABLE = new Font("Segoe UI", Font.PLAIN, 12);
 
-    private static final int BUTTON_WIDTH = 225;
+    /*
+     * ===================================================================================
+     * RESPONSIVE SIZING CONSTANTS
+     * ===================================================================================
+     * These constants define the responsive behavior of UI components.
+     * All ratios are calculated relative to the minimum window width (1250px) to ensure
+     * proper display at all supported resolutions.
+     *
+     * Layout composition at 1250px (minimum):
+     * - Left panel  (~40%): Label + ComboBox + Refresh button
+     * - Center panel (~25%): Two company logos
+     * - Right panel (~35%): Progress bar + Discover button + margins
+     * ===================================================================================
+     */
+
+    // Button sizing: responsive from 100px (min) to 180px (comfortable max)
     private static final int BUTTON_HEIGHT = 32;
+    private static final int BUTTON_MIN_WIDTH = 100;
+    private static final int BUTTON_MAX_WIDTH = 180;
+    /** Button width = 12% of window width (150px at 1250px, 180px capped at 1500px+). */
+    private static final double BUTTON_WIDTH_RATIO = 0.12;
 
     private static final Color COLOR_ALTERNATE_ROW = new Color(224, 224, 224);
     private static final Color COLOR_STATUS_BACKGROUND = new Color(227, 242, 253);
@@ -48,14 +67,29 @@ public class MainWindow extends JFrame {
     private static final Color COLOR_HEADER_BACKGROUND = new Color(245, 245, 245);
     private static final Color COLOR_HEADER_TEXT = new Color(60, 60, 60);
 
-    private static final int DEFAULT_WINDOW_WIDTH = 1200;
-    private static final int DEFAULT_WINDOW_HEIGHT = 700;
+    private static final int DEFAULT_WINDOW_WIDTH = 1550;
+    private static final int DEFAULT_WINDOW_HEIGHT = 650;
 
-    private static final int COMBO_BOX_WIDTH = 400;
+    // Minimum window dimensions to ensure all UI elements remain visible and usable.
+    private static final int MIN_WINDOW_WIDTH = 1250;
+    private static final int MIN_WINDOW_HEIGHT = 400;
+
+    // ComboBox sizing: responsive from 180px (min) to 350px (comfortable max)
     private static final int COMBO_BOX_HEIGHT = 30;
+    private static final int COMBO_BOX_MIN_WIDTH = 180;
+    private static final int COMBO_BOX_MAX_WIDTH = 350;
 
-    private static final int LOGO_WIDTH = 195;
-    private static final int LOGO_HEIGHT = 50;
+    private static final double COMBO_BOX_WIDTH_RATIO = 0.22;
+
+    // Logo sizing: responsive with a preserved aspect ratio (original 310x80)
+    private static final int LOGO_MIN_WIDTH = 140;
+    private static final int LOGO_MAX_WIDTH = 260;
+    private static final int LOGO_MIN_HEIGHT = 36;
+    private static final int LOGO_MAX_HEIGHT = 67;
+
+    private static final double LOGO_WIDTH_RATIO = 0.13; // Logo width = 13% of window width (162px at 1250px, 201px at 1550px (standard size), 249px at 1920px).
+
+    private static final double LOGO_ASPECT_RATIO = 310.0 / 80.0; // Logo aspect ratio (width/height) from the original 310x80 dimensions.
 
     // Table column indices
     private static final int COL_LOCK = 0;
@@ -95,6 +129,12 @@ public class MainWindow extends JFrame {
     private JButton discoverButton;
     private JButton refreshAdaptersButton;
     private JButton showRSTPTopologyButton;
+
+    // Responsive UI components (logos with original images for scaling)
+    private JLabel planetLogoLabel;
+    private JLabel adm21LogoLabel;
+    private transient Image planetLogoOriginal;
+    private transient Image adm21LogoOriginal;
 
     // Data lists
     private transient List<PlanetSwitchDevice> discoveredDevices;
@@ -180,6 +220,9 @@ public class MainWindow extends JFrame {
         toFront();
         setupWindowListener();
         restoreWindowState();
+
+        // Apply initial responsive sizing based on restored window dimensions
+        updateResponsiveComponents();
 
         appState = APP_STATE.INIT;
 
@@ -309,7 +352,7 @@ public class MainWindow extends JFrame {
                 logger.debug("Set {} status to {} for device at row {}", protocol, isAvailable, row);
             }
 
-            protocolStatusCache.computeIfAbsent(macAddress, k -> new HashMap<>()).put(protocol.toLowerCase(), isAvailable);
+            protocolStatusCache.computeIfAbsent(macAddress, _ -> new HashMap<>()).put(protocol.toLowerCase(), isAvailable);
         }
     }
 
@@ -428,16 +471,25 @@ public class MainWindow extends JFrame {
 
     /**
      * Initializes the main window frame properties.
+     * <p>
+     * Sets the window title, default size, minimum size to ensure UI elements
+     * remain visible during resizing, and configures the layout manager.
+     * </p>
      */
     private void initializeFrame() {
         setTitle(lang.get("window.title"));
         setSize(PreferencesManager.getWindowWidth(DEFAULT_WINDOW_WIDTH), PreferencesManager.getWindowHeight(DEFAULT_WINDOW_HEIGHT));
+        setMinimumSize(new Dimension(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT));
         setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
         setLayout(new BorderLayout());
     }
 
     /**
-     * Sets up the window close listener to save state and clean up resources.
+     * Sets up window listeners for close events and responsive resizing.
+     * <p>
+     * Configures both a WindowListener for cleanup on close and a ComponentListener
+     * for dynamic UI component resizing when the window dimensions change.
+     * </p>
      */
     private void setupWindowListener() {
         addWindowListener(new java.awt.event.WindowAdapter() {
@@ -447,6 +499,107 @@ public class MainWindow extends JFrame {
                 cleanup();
             }
         });
+
+        // Add a component listener for responsive resizing
+        addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentResized(ComponentEvent e) {
+                updateResponsiveComponents();
+            }
+        });
+    }
+
+    /**
+     * Updates all responsive UI components based on current window dimensions.
+     * <p>
+     * Recalculates and applies appropriate sizes for buttons, combo boxes, and logos
+     * based on the current window width, respecting minimum and maximum constraints.
+     * </p>
+     */
+    private void updateResponsiveComponents() {
+        int windowWidth = getWidth();
+
+        // Update button sizes
+        int buttonWidth = calculateResponsiveWidth(windowWidth, BUTTON_WIDTH_RATIO, BUTTON_MIN_WIDTH, BUTTON_MAX_WIDTH);
+        Dimension buttonSize = new Dimension(buttonWidth, BUTTON_HEIGHT);
+        updateButtonSize(discoverButton, buttonSize);
+        updateButtonSize(refreshAdaptersButton, buttonSize);
+        updateButtonSize(downloadSCButton, buttonSize);
+        updateButtonSize(getAllSCButton, buttonSize);
+        updateButtonSize(showRSTPTopologyButton, buttonSize);
+
+        // Update combo box size
+        int comboWidth = calculateResponsiveWidth(windowWidth, COMBO_BOX_WIDTH_RATIO, COMBO_BOX_MIN_WIDTH, COMBO_BOX_MAX_WIDTH);
+        if (adapterComboBox != null) {
+            Dimension comboSize = new Dimension(comboWidth, COMBO_BOX_HEIGHT);
+            adapterComboBox.setPreferredSize(comboSize);
+            adapterComboBox.setMaximumSize(comboSize);
+        }
+
+        // Update logo sizes
+        updateLogoSizes(windowWidth);
+
+        // Revalidate layout
+        revalidate();
+        repaint();
+    }
+
+    /**
+     * Calculates a responsive width based on window width and constraints.
+     * <p>
+     * The calculated width is clamped between minimum and maximum values to ensure
+     * the component remains usable at all window sizes.
+     * </p>
+     *
+     * @param windowWidth the current window width in pixels
+     * @param ratio       the ratio of component width relative to window width (0.0 to 1.0)
+     * @param minWidth    the minimum allowed width in pixels
+     * @param maxWidth    the maximum allowed width in pixels
+     * @return the calculated width, clamped between min and max
+     */
+    private int calculateResponsiveWidth(int windowWidth, double ratio, int minWidth, int maxWidth) {
+        int calculatedWidth = (int) (windowWidth * ratio);
+        // Math.clamp(value, min, max) - clamps value within [min, max] range
+        return Math.clamp(calculatedWidth, minWidth, maxWidth);
+    }
+
+    /**
+     * Updates a button's preferred and maximum size for responsive behavior.
+     *
+     * @param button the button to update (maybe null)
+     * @param size the new size to apply
+     */
+    private void updateButtonSize(JButton button, Dimension size) {
+        if (button != null) {
+            button.setPreferredSize(size);
+            button.setMaximumSize(size);
+        }
+    }
+
+    /**
+     * Updates logo sizes based on window width while maintaining an aspect ratio.
+     *
+     * @param windowWidth the current window width
+     */
+    private void updateLogoSizes(int windowWidth) {
+        int logoWidth = calculateResponsiveWidth(windowWidth, LOGO_WIDTH_RATIO, LOGO_MIN_WIDTH, LOGO_MAX_WIDTH);
+        int logoHeight = (int) (logoWidth / LOGO_ASPECT_RATIO);
+
+        // Clamp height to constraints
+        logoHeight = Math.clamp(logoHeight, LOGO_MIN_HEIGHT, LOGO_MAX_HEIGHT);
+
+        // Recalculate width based on clamped height to maintain an aspect ratio
+        logoWidth = (int) (logoHeight * LOGO_ASPECT_RATIO);
+
+        if (planetLogoLabel != null && planetLogoOriginal != null) {
+            Image scaledImage = planetLogoOriginal.getScaledInstance(logoWidth, logoHeight, Image.SCALE_SMOOTH);
+            planetLogoLabel.setIcon(new ImageIcon(scaledImage));
+        }
+
+        if (adm21LogoLabel != null && adm21LogoOriginal != null) {
+            Image scaledImage = adm21LogoOriginal.getScaledInstance(logoWidth, logoHeight, Image.SCALE_SMOOTH);
+            adm21LogoLabel.setIcon(new ImageIcon(scaledImage));
+        }
     }
 
     /**
@@ -505,16 +658,16 @@ public class MainWindow extends JFrame {
         JMenu exportItem = new JMenu(lang.get("menu.export"));
 
         JMenuItem quitItem = new JMenuItem(lang.get("menu.quit"));
-        quitItem.addActionListener(e -> {
+        quitItem.addActionListener(_ -> {
             saveWindowState();
             System.exit(0);
         });
 
         JMenuItem csvItem = new JMenuItem("CSV");
-        csvItem.addActionListener(e -> handleExport("CSV"));
+        csvItem.addActionListener(_ -> handleExport("CSV"));
 
         JMenuItem xlsxItem = new JMenuItem("XLSX");
-        xlsxItem.addActionListener(e -> handleExport("XLSX"));
+        xlsxItem.addActionListener(_ -> handleExport("XLSX"));
 
         fileMenu.add(exportItem);
         fileMenu.addSeparator();
@@ -532,10 +685,10 @@ public class MainWindow extends JFrame {
         JMenu editMenu = new JMenu(lang.get("menu.edit"));
 
         JMenuItem preferencesItem = new JMenuItem(lang.get("menu.preferences"));
-        preferencesItem.addActionListener(e -> showPreferences());
+        preferencesItem.addActionListener(_ -> showPreferences());
 
         JMenuItem clearItem = new JMenuItem(lang.get("menu.clear"));
-        clearItem.addActionListener(e -> handleClearResults());
+        clearItem.addActionListener(_ -> handleClearResults());
 
         editMenu.add(preferencesItem);
         editMenu.add(clearItem);
@@ -552,10 +705,10 @@ public class MainWindow extends JFrame {
         JMenu languageMenu = new JMenu(lang.get("menu.language"));
 
         JMenuItem englishItem = new JMenuItem("English");
-        englishItem.addActionListener(e -> changeLanguage("en"));
+        englishItem.addActionListener(_ -> changeLanguage("en"));
 
         JMenuItem frenchItem = new JMenuItem("Français");
-        frenchItem.addActionListener(e -> changeLanguage("fr"));
+        frenchItem.addActionListener(_ -> changeLanguage("fr"));
 
         languageMenu.add(englishItem);
         languageMenu.add(frenchItem);
@@ -582,10 +735,10 @@ public class MainWindow extends JFrame {
         JMenu helpMenu = new JMenu(lang.get("menu.help"));
 
         JMenuItem docItem = new JMenuItem(lang.get("menu.documentation"));
-        docItem.addActionListener(e -> showDocumentation());
+        docItem.addActionListener(_ -> showDocumentation());
 
         JMenuItem aboutItem = new JMenuItem(lang.get("menu.about"));
-        aboutItem.addActionListener(e -> showAbout());
+        aboutItem.addActionListener(_ -> showAbout());
 
         helpMenu.add(docItem);
         helpMenu.add(aboutItem);
@@ -628,13 +781,24 @@ public class MainWindow extends JFrame {
     }
 
     /**
-     * Creates the adapter combo box with a custom renderer.
+     * Creates the adapter combo box with a custom renderer and responsive sizing.
+     * <p>
+     * The combo box uses minimum and maximum size constraints to ensure a proper
+     * display during window resizing while maintaining usability.
+     * </p>
+     *
+     * @return the configured combo box
      */
     private JComboBox<NetworkInterfaceCustom> createAdapterComboBox() {
         JComboBox<NetworkInterfaceCustom> comboBox = new JComboBox<>();
         comboBox.setFont(FONT_MODERN);
-        comboBox.setPreferredSize(new Dimension(COMBO_BOX_WIDTH, COMBO_BOX_HEIGHT));
+        comboBox.setMinimumSize(new Dimension(COMBO_BOX_MIN_WIDTH, COMBO_BOX_HEIGHT));
         comboBox.setToolTipText(lang.get("toolbar.network_interface"));
+
+        // Set the initial responsive size
+        int windowWidth = getWidth() > 0 ? getWidth() : DEFAULT_WINDOW_WIDTH;
+        int comboWidth = calculateResponsiveWidth(windowWidth, COMBO_BOX_WIDTH_RATIO, COMBO_BOX_MIN_WIDTH, COMBO_BOX_MAX_WIDTH);
+        comboBox.setPreferredSize(new Dimension(comboWidth, COMBO_BOX_HEIGHT));
 
         comboBox.setRenderer(new DefaultListCellRenderer() {
             @Override
@@ -652,34 +816,45 @@ public class MainWindow extends JFrame {
     }
 
     /**
-     * Creates the refresh adapters button.
+     * Creates the refresh adapters button with responsive sizing.
+     *
+     * @return the configured refresh button
      */
     private JButton createRefreshButton() {
         JButton button = new JButton(lang.get("toolbar.refresh_adapters"));
-        button.setPreferredSize(new Dimension(BUTTON_WIDTH, BUTTON_HEIGHT));
         button.setFont(FONT_MODERN);
         button.setFocusPainted(false);
         button.setToolTipText(lang.get("toolbar.refresh_adapters_tip"));
-        button.addActionListener(e -> handleRefreshAdapters());
+        button.addActionListener(_ -> handleRefreshAdapters());
+
+        // Set the initial responsive size
+        int windowWidth = getWidth() > 0 ? getWidth() : DEFAULT_WINDOW_WIDTH;
+        int buttonWidth = calculateResponsiveWidth(windowWidth, BUTTON_WIDTH_RATIO, BUTTON_MIN_WIDTH, BUTTON_MAX_WIDTH);
+        button.setPreferredSize(new Dimension(buttonWidth, BUTTON_HEIGHT));
+
         return button;
     }
 
     /**
      * Creates the center panel of the toolbar with company logos.
+     * <p>
+     * Logos are stored as instance variables to allow dynamic resizing
+     * when the window dimensions change.
+     * </p>
      */
     private JPanel createToolbarCenterPanel() {
         JPanel centerPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 20, 0));
 
-        // Load and add PLANET logo
-        JLabel planetLogo = createLogoLabel("/images/planet_logo_png.png", "PLANET Logo");
-        if (planetLogo != null) {
-            centerPanel.add(planetLogo);
+        // Load and add PLANET logo (stored for responsive resizing)
+        planetLogoLabel = createLogoLabel("/images/planet_logo_png.png", "PLANET Logo", true);
+        if (planetLogoLabel != null) {
+            centerPanel.add(planetLogoLabel);
         }
 
-        // Load and add ADM21 logo
-        JLabel adm21Logo = createLogoLabel("/images/adm21_logo_png.png", "ADM21 Logo");
-        if (adm21Logo != null) {
-            centerPanel.add(adm21Logo);
+        // Load and add ADM21 logo (stored for responsive resizing)
+        adm21LogoLabel = createLogoLabel("/images/adm21_logo_png.png", "ADM21 Logo", false);
+        if (adm21LogoLabel != null) {
+            centerPanel.add(adm21LogoLabel);
         }
 
         return centerPanel;
@@ -688,14 +863,16 @@ public class MainWindow extends JFrame {
     /**
      * Creates a JLabel with a logo image loaded from resources.
      * <p>
-     * The image is scaled to LOGO_WIDTH x LOGO_HEIGHT while maintaining aspect ratio.
+     * The original image is stored for later rescaling during window resize events.
+     * The initial size is calculated based on current window dimensions.
      * </p>
      *
-     * @param resourcePath the path to the image resource (e.g., "/images/logo.png")
-     * @param altText alternative text for the image
+     * @param resourcePath  the path to the image resource (e.g., "/images/logo.png")
+     * @param altText       alternative text for the image
+     * @param isPlanetLogo  true if this is the PLANET logo (determines storage location)
      * @return JLabel containing the scaled image, or null if loading fails
      */
-    private JLabel createLogoLabel(String resourcePath, String altText) {
+    private JLabel createLogoLabel(String resourcePath, String altText, boolean isPlanetLogo) {
         try {
             java.net.URL imageUrl = getClass().getResource(resourcePath);
             if (imageUrl == null) {
@@ -704,9 +881,23 @@ public class MainWindow extends JFrame {
             }
 
             ImageIcon originalIcon = new ImageIcon(imageUrl);
-            Image scaledImage = originalIcon.getImage().getScaledInstance(
-                LOGO_WIDTH, LOGO_HEIGHT, Image.SCALE_SMOOTH
-            );
+            Image originalImage = originalIcon.getImage();
+
+            // Store the original image for responsive resizing
+            if (isPlanetLogo) {
+                planetLogoOriginal = originalImage;
+            } else {
+                adm21LogoOriginal = originalImage;
+            }
+
+            // Calculate initial size based on current window width
+            int windowWidth = getWidth() > 0 ? getWidth() : DEFAULT_WINDOW_WIDTH;
+            int logoWidth = calculateResponsiveWidth(windowWidth, LOGO_WIDTH_RATIO, LOGO_MIN_WIDTH, LOGO_MAX_WIDTH);
+            int logoHeight = (int) (logoWidth / LOGO_ASPECT_RATIO);
+            logoHeight = Math.clamp(logoHeight, LOGO_MIN_HEIGHT, LOGO_MAX_HEIGHT);
+            logoWidth = (int) (logoHeight * LOGO_ASPECT_RATIO);
+
+            Image scaledImage = originalImage.getScaledInstance(logoWidth, logoHeight, Image.SCALE_SMOOTH);
 
             JLabel label = new JLabel(new ImageIcon(scaledImage));
             label.setToolTipText(altText);
@@ -721,6 +912,11 @@ public class MainWindow extends JFrame {
 
     /**
      * Creates the right panel of the toolbar (progress bar and discover button).
+     * <p>
+     * The discovery button uses responsive sizing that adapts to window width.
+     * </p>
+     *
+     * @return the configured right panel
      */
     private JPanel createToolbarRightPanel() {
         JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
@@ -732,9 +928,13 @@ public class MainWindow extends JFrame {
 
         discoverButton = new JButton(lang.get("toolbar.discover"));
         discoverButton.setFont(FONT_MODERN);
-        discoverButton.setPreferredSize(new Dimension(BUTTON_WIDTH, BUTTON_HEIGHT));
         discoverButton.setFocusPainted(false);
-        discoverButton.addActionListener(e -> handleDiscoverClicked());
+        discoverButton.addActionListener(_ -> handleDiscoverClicked());
+
+        // Set the initial responsive size
+        int windowWidth = getWidth() > 0 ? getWidth() : DEFAULT_WINDOW_WIDTH;
+        int buttonWidth = calculateResponsiveWidth(windowWidth, BUTTON_WIDTH_RATIO, BUTTON_MIN_WIDTH, BUTTON_MAX_WIDTH);
+        discoverButton.setPreferredSize(new Dimension(buttonWidth, BUTTON_HEIGHT));
 
         rightPanel.add(progressBar);
         rightPanel.add(discoverButton);
@@ -944,9 +1144,9 @@ public class MainWindow extends JFrame {
         JPanel bottomPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 12));
         bottomPanel.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(224, 224, 224)));
 
-        downloadSCButton = createActionButton(lang.get("button.get_startup_config"), e -> handleGetStartupConfig());
-        getAllSCButton = createActionButton(lang.get("button.get_all_config"), e -> handleGetAllConfigs());
-        showRSTPTopologyButton = createActionButton("RSTP", e -> handleGetRSTP());
+        downloadSCButton = createActionButton(lang.get("button.get_startup_config"), _ -> handleGetStartupConfig());
+        getAllSCButton = createActionButton(lang.get("button.get_all_config"), _ -> handleGetAllConfigs());
+        showRSTPTopologyButton = createActionButton("RSTP", _ -> handleGetRSTP());
 
         bottomPanel.add(downloadSCButton);
         bottomPanel.add(getAllSCButton);
@@ -956,12 +1156,20 @@ public class MainWindow extends JFrame {
     }
 
     /**
-     * Creates a styled action button.
+     * Creates a styled action button with the default maximum width.
+     * <p>
+     * The button is created with the maximum width as the default size.
+     * Responsive resizing is handled separately by the ComponentListener.
+     * </p>
+     *
+     * @param text     the button text
+     * @param listener the action listener for click events
+     * @return the configured button
      */
     public static JButton createActionButton(String text, java.awt.event.ActionListener listener) {
         JButton button = new JButton(text);
         button.setFont(FONT_MODERN);
-        button.setPreferredSize(new Dimension(BUTTON_WIDTH, BUTTON_HEIGHT));
+        button.setPreferredSize(new Dimension(BUTTON_MAX_WIDTH, BUTTON_HEIGHT));
         button.setFocusPainted(false);
         button.setEnabled(false);
         button.addActionListener(listener);
@@ -1084,6 +1292,10 @@ public class MainWindow extends JFrame {
 
     /**
      * Refreshes the entire UI after a language change.
+     * <p>
+     * Preserves the current state (selected adapter, discovered devices, etc.)
+     * and reapplies responsive sizing after recreating UI components.
+     * </p>
      */
     private void refreshUI() {
         NetworkInterfaceCustom selectedAdapter = (NetworkInterfaceCustom) adapterComboBox.getSelectedItem();
@@ -1107,6 +1319,9 @@ public class MainWindow extends JFrame {
         restoreProtocolStatus();
 
         updateStatusAfterRefresh(currentDiscoveredCount, currentDuplicateMacs);
+
+        // Reapply responsive sizing after UI recreation
+        updateResponsiveComponents();
 
         setTitle(lang.get("window.title"));
         revalidate();

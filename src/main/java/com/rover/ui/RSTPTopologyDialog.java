@@ -16,6 +16,8 @@ import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.table.*;
 import java.awt.*;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
@@ -29,8 +31,30 @@ public class RSTPTopologyDialog extends JDialog {
 
     private static final Logger logger = LoggerFactory.getLogger(RSTPTopologyDialog.class);
 
-    private static final int DIALOG_WIDTH = 1000;
-    private static final int DIALOG_HEIGHT = 600;
+    /*
+     * ===================================================================================
+     * RESPONSIVE SIZING CONSTANTS
+     * ===================================================================================
+     * Dialog sizing follows the same responsive principles as MainWindow.
+     * ===================================================================================
+     */
+
+    private static final int DIALOG_WIDTH = 1100;
+    private static final int DIALOG_HEIGHT = 550;
+
+    /** Minimum dialog dimensions to ensure table and buttons remain usable. */
+    private static final int MIN_DIALOG_WIDTH = 800;
+    private static final int MIN_DIALOG_HEIGHT = 350;
+
+    /** Padding around the main content area to match MainWindow styling. */
+    private static final int CONTENT_PADDING = 15;
+
+    // Button sizing: responsive from 90px (min) to 160px (comfortable max)
+    private static final int BUTTON_HEIGHT = 32;
+    private static final int BUTTON_MIN_WIDTH = 90;
+    private static final int BUTTON_MAX_WIDTH = 160;
+    /** Button width = 14% of dialog width. */
+    private static final double BUTTON_WIDTH_RATIO = 0.14;
 
     private static final Font FONT_TABLE = new Font("Segoe UI", Font.PLAIN, 12);
     private static final Color COLOR_ALTERNATE_ROW = new Color(224, 224, 224);
@@ -63,6 +87,22 @@ public class RSTPTopologyDialog extends JDialog {
     private final transient ExportService exportService = new ExportService();
     private transient SwingWorker<RSTPTopology, String> discoveryWorker;
 
+    // Responsive buttons for dynamic resizing
+    private JButton exportButton;
+    private JButton refreshButton;
+    private JButton closeButton;
+
+    /**
+     * Creates a new RSTP Topology dialog.
+     * <p>
+     * Initializes the dialog with proper sizing constraints and responsive behavior.
+     * The dialog uses minimum dimensions to ensure UI elements remain visible
+     * during resizing.
+     * </p>
+     *
+     * @param parent  the parent frame for modal positioning
+     * @param devices the list of devices to discover RSTP topology for
+     */
     public RSTPTopologyDialog(JFrame parent, List<PlanetSwitchDevice> devices) {
         setTitle(lang.get("topology.window_title"));
         setDefaultCloseOperation(DISPOSE_ON_CLOSE);
@@ -71,6 +111,7 @@ public class RSTPTopologyDialog extends JDialog {
         this.discoveryService = new RSTPDiscoveryService();
 
         setSize(DIALOG_WIDTH, DIALOG_HEIGHT);
+        setMinimumSize(new Dimension(MIN_DIALOG_WIDTH, MIN_DIALOG_HEIGHT));
         setLocationRelativeTo(parent);
         setLayout(new BorderLayout());
 
@@ -83,23 +124,42 @@ public class RSTPTopologyDialog extends JDialog {
             }
         });
 
+        // Add component listener for responsive resizing
+        addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentResized(ComponentEvent e) {
+                updateResponsiveComponents();
+            }
+        });
+
         initComponents();
         discoverAndDisplay(devices);
+
+        // Apply initial responsive sizing
+        updateResponsiveComponents();
 
         logger.info("RSTPTopologyDialog opened");
     }
 
     /**
      * Initializes UI components.
+     * <p>
+     * Creates the main layout with proper padding around the content area
+     * to ensure consistent spacing from window edges, matching MainWindow styling.
+     * </p>
      */
     private void initComponents() {
         createTable();
 
-        JPanel centerPanel = new JPanel(new BorderLayout());
+        // Main content panel with padding from window edges
+        JPanel centerPanel = new JPanel(new BorderLayout(0, 10));
+        centerPanel.setBorder(BorderFactory.createEmptyBorder(
+                CONTENT_PADDING, CONTENT_PADDING, CONTENT_PADDING, CONTENT_PADDING));
+
         centerPanel.add(createStatusBar(), BorderLayout.NORTH);
 
         JScrollPane scrollPane = new JScrollPane(rstpTable);
-        scrollPane.setBorder(BorderFactory.createEmptyBorder());
+        scrollPane.setBorder(BorderFactory.createLineBorder(new Color(200, 200, 200)));
         centerPanel.add(scrollPane, BorderLayout.CENTER);
 
         add(centerPanel, BorderLayout.CENTER);
@@ -219,27 +279,108 @@ public class RSTPTopologyDialog extends JDialog {
         SwingUtilities.invokeLater(() -> statusLabel.setText(message));
     }
 
+    /**
+     * Creates the button panel with action buttons.
+     * <p>
+     * The panel includes export, refresh, and close buttons aligned to the right.
+     * A top border separates it from the main content area, matching MainWindow styling.
+     * Buttons are stored as instance variables for responsive resizing.
+     * </p>
+     *
+     * @return the configured button panel
+     */
     private JPanel createButtonPanel() {
-        JPanel panel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 10));
+        JPanel panel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 12));
+        panel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(224, 224, 224)),
+                BorderFactory.createEmptyBorder(0, CONTENT_PADDING, 0, CONTENT_PADDING)
+        ));
 
-        JButton exportButton = MainWindow.createActionButton(lang.get("button.export"), _ -> export());
+        // Calculate initial button size
+        int dialogWidth = getWidth() > 0 ? getWidth() : DIALOG_WIDTH;
+        int buttonWidth = calculateResponsiveWidth(dialogWidth, BUTTON_WIDTH_RATIO, BUTTON_MIN_WIDTH, BUTTON_MAX_WIDTH);
+        Dimension buttonSize = new Dimension(buttonWidth, BUTTON_HEIGHT);
 
-        JButton refreshButton = MainWindow.createActionButton(lang.get("button.refresh"), _ -> refresh());
-
-        JButton closeButton = MainWindow.createActionButton(lang.get("button.close"), _ -> {
+        exportButton = createResponsiveButton(lang.get("button.export"), buttonSize, _ -> export());
+        refreshButton = createResponsiveButton(lang.get("button.refresh"), buttonSize, _ -> refresh());
+        closeButton = createResponsiveButton(lang.get("button.close"), buttonSize, _ -> {
             shutdownRSTPServices();
             dispose();
         });
-
-        exportButton.setEnabled(true);
-        refreshButton.setEnabled(true);
-        closeButton.setEnabled(true);
 
         panel.add(exportButton);
         panel.add(refreshButton);
         panel.add(closeButton);
 
         return panel;
+    }
+
+    /**
+     * Creates a responsive button with the specified size.
+     *
+     * @param text     the button text
+     * @param size     the initial button size
+     * @param listener the action listener
+     * @return the configured button
+     */
+    private JButton createResponsiveButton(String text, Dimension size, java.awt.event.ActionListener listener) {
+        JButton button = new JButton(text);
+        button.setFont(FONT_TABLE);
+        button.setPreferredSize(size);
+        button.setFocusPainted(false);
+        button.setEnabled(true);
+        button.addActionListener(listener);
+        return button;
+    }
+
+    /**
+     * Updates all responsive UI components based on current dialog dimensions.
+     */
+    private void updateResponsiveComponents() {
+        int dialogWidth = getWidth();
+
+        // Update button sizes
+        int buttonWidth = calculateResponsiveWidth(dialogWidth, BUTTON_WIDTH_RATIO, BUTTON_MIN_WIDTH, BUTTON_MAX_WIDTH);
+        Dimension buttonSize = new Dimension(buttonWidth, BUTTON_HEIGHT);
+
+        updateButtonSize(exportButton, buttonSize);
+        updateButtonSize(refreshButton, buttonSize);
+        updateButtonSize(closeButton, buttonSize);
+
+        // Revalidate layout
+        revalidate();
+        repaint();
+    }
+
+    /**
+     * Calculates a responsive width based on dialog width and constraints.
+     * <p>
+     * The calculated width is clamped between minimum and maximum values to ensure
+     * the component remains usable at all dialog sizes.
+     * </p>
+     *
+     * @param dialogWidth the current dialog width in pixels
+     * @param ratio       the ratio of component width relative to dialog width (0.0 to 1.0)
+     * @param minWidth    the minimum allowed width in pixels
+     * @param maxWidth    the maximum allowed width in pixels
+     * @return the calculated width, clamped between min and max
+     */
+    private int calculateResponsiveWidth(int dialogWidth, double ratio, int minWidth, int maxWidth) {
+        int calculatedWidth = (int) (dialogWidth * ratio);
+        return Math.clamp(calculatedWidth, minWidth, maxWidth);
+    }
+
+    /**
+     * Updates a button's preferred and maximum size for responsive behavior.
+     *
+     * @param button the button to update (may be null)
+     * @param size   the new size to apply
+     */
+    private void updateButtonSize(JButton button, Dimension size) {
+        if (button != null) {
+            button.setPreferredSize(size);
+            button.setMaximumSize(size);
+        }
     }
 
     /**
