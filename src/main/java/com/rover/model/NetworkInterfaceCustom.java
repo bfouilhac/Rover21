@@ -17,10 +17,10 @@ import java.util.Objects;
  */
 public class NetworkInterfaceCustom {
 
-    /** Regular expression pattern for validating IPv4 addresses. */
+    // Regular expression pattern for validating IPv4 addresses.
     public static final String IPV4_PATTERN = "^((0|1\\d?\\d?|2[0-4]?\\d?|25[0-5]?|[3-9]\\d?)\\.){3}(0|1\\d?\\d?|2[0-4]?\\d?|25[0-5]?|[3-9]\\d?)$";
 
-    /** Prefix for loopback addresses (localhost). */
+    // Prefix for loopback addresses (localhost).
     private static final String LOOPBACK_PREFIX = "127.";
 
     private final String name;

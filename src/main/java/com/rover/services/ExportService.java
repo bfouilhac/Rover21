@@ -1,7 +1,6 @@
 package com.rover.services;
 
 import com.rover.model.PlanetSwitchDevice;
-import com.rover.model.rstp.RSTPNode;
 import com.rover.utils.LanguageManager;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -252,7 +251,7 @@ public class ExportService {
             logger.info("RSTP CSV export completed successfully: {} rows exported", rowCount);
         } catch (IOException e) {
             logger.error("Error during RSTP CSV export", e);
-            throw e;
+            Thread.currentThread().interrupt();
         }
     }
 }
