@@ -7,7 +7,7 @@
 
     <groupId>com.rover</groupId>
     <artifactId>Rover21</artifactId>
-    <version>1.4.4</version>
+    <version> 1.4.5</version>
     <packaging>jar</packaging>
 
     <name>Rover21</name>
@@ -65,6 +65,11 @@
             <groupId>net.sf.jung</groupId>
             <artifactId>jung-graph-impl</artifactId>
             <version>2.1.1</version>
+        </dependency>
+        <dependency>
+            <groupId>net.sourceforge.collections</groupId>
+            <artifactId>collections-generic</artifactId>
+            <version>4.01</version>
         </dependency>
     </dependencies>
 

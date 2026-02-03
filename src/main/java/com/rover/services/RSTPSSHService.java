@@ -14,16 +14,17 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
  * Service for retrieving RSTP information via SSH.
+ * Manages persistent SSH connections per device for efficient command execution.
  *
- * @author Benjamin FOUILHAC, ADM21 - January 2026
+ * @author Benjamin FOUILHAC, ADM21 - January/February 2026
  */
 public class RSTPSSHService {
 
@@ -35,7 +36,26 @@ public class RSTPSSHService {
     private static final int NO_DATA_TIMEOUT_MS = 1500;
     private static final int READ_BUFFER_SIZE = 8192;
 
-    private final SSHConnectionManager sshManager;
+    /**
+     * Holds an SSH session and its associated shell channel for a device.
+     */
+    private record SSHConnection(Session session, ChannelShell channel) {
+        public boolean isValid() {
+            return session != null && session.isConnected()
+                    && channel != null && channel.isConnected();
+        }
+
+        public void close() {
+            if (channel != null && channel.isConnected()) {
+                channel.disconnect();
+            }
+            if (session != null && session.isConnected()) {
+                session.disconnect();
+            }
+        }
+    }
+
+    private final SSHConnectionManager connectionManager;
 
     // Regex patterns for parsing - Format 1 (IGS-6325)
     private static final Pattern BRIDGE_ID_PATTERN = Pattern.compile("Bridge ID\\s*:\\s*(\\d+)\\.(\\S+)");
@@ -53,14 +73,91 @@ public class RSTPSSHService {
     private static final Pattern TOPOLOGY_CHANGE_PATTERN = Pattern.compile("last change occurred\\s+(.+?)\\s+ago");
     private static final Pattern PORT_LINE_ALT_PATTERN = Pattern.compile("^\\s*(gi\\d+)\\s+(\\w+)\\s+(\\d+)\\.(\\d+)\\s+(\\d+)\\s+(\\w+)\\s+(\\w+).*");
 
-    private Map<String, ChannelShell> channels = new HashMap<>();
+    // Thread-safe map for persistent SSH connections (key = IP address)
+    private final Map<String, SSHConnection> connections = new ConcurrentHashMap<>();
+
+    // Lock map to ensure only one thread uses a specific connection at a time
+    private final Map<String, Object> deviceLocks = new ConcurrentHashMap<>();
 
     public RSTPSSHService() {
-        this.sshManager = new SSHConnectionManager();
+        this.connectionManager = new SSHConnectionManager();
+    }
+
+    /**
+     * Gets or creates a persistent SSH connection for a device.
+     * Uses IP address as the unique key.
+     *
+     * @param device the device to connect to
+     * @return a valid SSHConnection
+     * @throws IOException if connection fails
+     */
+    private SSHConnection getOrCreateConnection(PlanetSwitchDevice device) throws IOException {
+        String key = device.getIpAddress();
+
+        SSHConnection existing = connections.get(key);
+        if (existing != null && existing.isValid()) {
+            logger.debug("Reusing existing SSH connection for {}", key);
+            return existing;
+        }
+
+        // Clean up invalid connection if exists
+        if (existing != null) {
+            logger.debug("Closing invalid SSH connection for {}", key);
+            existing.close();
+            connections.remove(key);
+        }
+
+        try {
+            Session session = connectionManager.createSession(
+                    device.getIpAddress(),
+                    PreferencesManager.getSshPort(),
+                    device.getUsername(),
+                    device.getPassword()
+            );
+            session.connect();
+            logger.info("SSH session connected for {}", device.getIpAddress());
+
+            ChannelShell channel = connectionManager.openShellChannel(session);
+            if (!channel.isConnected()) {
+                connectionManager.disconnect(channel, session);
+                throw new IOException("SSH channel failed to connect for " + device.getIpAddress());
+            }
+
+            // Authenticate
+            if (!connectionManager.handleSshAuthentication(channel, device.getIpAddress(),
+                    device.getUsername(), device.getPassword())) {
+                connectionManager.disconnect(channel, session);
+                throw new IOException("SSH authentication failed for " + device.getIpAddress());
+            }
+
+            SSHConnection conn = new SSHConnection(session, channel);
+            connections.put(key, conn);
+            logger.info("Created new SSH connection for {}", device.getIpAddress());
+            return conn;
+
+        } catch (JSchException e) {
+            throw new IOException("Failed to establish SSH connection to " + device.getIpAddress(), e);
+        } catch (Exception e) {
+            throw new IOException("SSH connection error for " + device.getIpAddress() + ": " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Closes the SSH connection for a specific device.
+     *
+     * @param ipAddress the IP address of the device
+     */
+    public void closeConnection(String ipAddress) {
+        SSHConnection conn = connections.remove(ipAddress);
+        if (conn != null) {
+            conn.close();
+            logger.debug("Closed SSH connection for {}", ipAddress);
+        }
     }
 
     /**
      * Checks if RSTP/STP is enabled on the device.
+     * Uses a persistent connection that will be reused for subsequent operations.
      *
      * @param device the device to check
      * @return true if RSTP/STP is enabled
@@ -71,53 +168,53 @@ public class RSTPSSHService {
             return false;
         }
 
-        boolean enabled = false;
-        try {
-
-            Session session = sshManager.createSession(
-                    device.getIpAddress(),
-                    PreferencesManager.getSshPort(),
-                    device.getUsername(),
-                    device.getPassword()
-            );
-            session.connect();
-            logger.info("SSH connected to: {}", device.getIpAddress());
-
-            if (!session.isConnected()) {
-                logger.error("SSH session failed to connect while checking RSTP status");
-                return false;
-            }
-
-            ChannelShell channel = sshManager.openShellChannel(session);
-            if (!channel.isConnected()) {
-                logger.error("SSH channel failed to connect while checking RSTP status");
-                return false;
-            }
-            channels.put(device.getMacAddress(), channel); // Saving this channel in our map
-
-            if (sshManager.handleSshAuthentication(channel, device.getIpAddress(), device.getUsername(), device.getPassword())){
-                logger.info("SSH authentication successful for {}", device.getIpAddress());
-                InputStream in = channel.getInputStream();
-                OutputStream out = channel.getOutputStream();
-                String output = executeCommandInSession(in, out, "show spanning-tree summary");
-                if (output.toLowerCase().contains("unknown command")){
-                    logger.info("Device {} does not support the summary spanning-tree command", device.getIpAddress());
-                    output = executeCommandInSession(in, out, "show spanning-tree");
-                    enabled = output.contains("Spanning tree enabled mode RSTP");
-                } else {
-                    enabled = output.contains("Protocol Version: RSTP") || output.contains("Protocol Version: Compatible");
-                }
-            }
-            logger.info("Device {} RSTP enabled ? {}", device.getIpAddress(), enabled);
-            return enabled;
-        } catch (Exception e) {
-            logger.error("Failed to check RSTP status for {} - {}: {}", device.getIpAddress(), e.getClass().getSimpleName(), e.getMessage());
-            Thread.currentThread().interrupt();
+        if (device.getUsername() == null || device.getPassword() == null) {
+            logger.debug("Device {} has no SSH credentials", device.getIpAddress());
             return false;
         }
 
+        try {
+            SSHConnection conn = getOrCreateConnection(device);
+            InputStream in = conn.channel().getInputStream();
+            OutputStream out = conn.channel().getOutputStream();
+
+            // Clear any pending data
+            while (in.available() > 0) in.read();
+
+            String output = executeCommandInSession(in, out, "show spanning-tree summary");
+
+            if (output.toLowerCase().contains("unknown command")) {
+                logger.debug("Device {} does not support summary command, trying full command", device.getIpAddress());
+                output = executeCommandInSession(in, out, "show spanning-tree");
+                boolean enabled = output.contains("Spanning tree enabled mode RSTP")
+                        || output.contains("Spanning tree enabled mode STP")
+                        || output.contains("Spanning tree enabled mode MSTP");
+                logger.info("Device {} RSTP/STP enabled: {}", device.getIpAddress(), enabled);
+                return enabled;
+            }
+
+            boolean enabled = output.contains("Protocol Version: RSTP")
+                    || output.contains("Protocol Version: Compatible")
+                    || output.contains("Protocol Version: STP");
+            logger.info("Device {} RSTP/STP enabled: {}", device.getIpAddress(), enabled);
+            return enabled;
+
+        } catch (Exception e) {
+            logger.error("Failed to check RSTP status for {}: {}", device.getIpAddress(), e.getMessage());
+            closeConnection(device.getIpAddress());
+            return false;
+        }
+        // NOTE: Connection kept open for subsequent operations (getRSTPInfo, getLLDPNeighborInfo)
     }
 
+    /**
+     * Retrieves RSTP information for a device.
+     * Uses the persistent connection created by isRSTPEnabled() or creates a new one.
+     *
+     * @param device the device to query
+     * @return RSTPNode with populated RSTP data
+     * @throws IOException if SSH communication fails
+     */
     public RSTPNode getRSTPInfo(PlanetSwitchDevice device) throws IOException {
         if (!device.isSSHUp() || device.getUsername() == null || device.getPassword() == null) {
             throw new IOException("SSH not available or credentials missing for " + device.getIpAddress());
@@ -126,72 +223,79 @@ public class RSTPSSHService {
         logger.info("Getting RSTP info for {} ({})", device.getDeviceName(), device.getIpAddress());
         RSTPNode node = new RSTPNode(device);
 
-        Session session = null;
-        ChannelShell channel = null;
-
         try {
-            // Create a new SSH connection for this operation
-            session = sshManager.createSession(
-                    device.getIpAddress(),
-                    PreferencesManager.getSshPort(),
-                    device.getUsername(),
-                    device.getPassword()
-            );
-            session.connect();
-            logger.debug("SSH session connected for getRSTPInfo: {}", device.getIpAddress());
+            SSHConnection conn = getOrCreateConnection(device);
+            InputStream in = conn.channel().getInputStream();
+            OutputStream out = conn.channel().getOutputStream();
 
-            if (!session.isConnected()) {
-                logger.error("SSH session failed to connect during getRSTPInfo");
-                return null;
-            }
+            // Clear any pending data
+            while (in.available() > 0) in.read();
 
-            channel = sshManager.openShellChannel(session);
-            if (!channel.isConnected()) {
-                logger.error("SSH channel failed to connect during getRSTPInfo");
-                return null;
-            }
-
-            // Authenticate
-            if (!sshManager.handleSshAuthentication(channel, device.getIpAddress(), device.getUsername(), device.getPassword())) {
-                logger.error("SSH authentication failed during getRSTPInfo for {}", device.getIpAddress());
-                return null;
-            }
-
-            InputStream in = channel.getInputStream();
-            OutputStream out = channel.getOutputStream();
-
-            Thread.sleep(INITIAL_WAIT_MS); // 500ms
+            Thread.sleep(INITIAL_WAIT_MS);
 
             sendLine(out, "terminal length 0");
-            Thread.sleep(PROMPT_WAIT_MS); // 200ms
-            readAvailableData(in, new StringBuilder()); // Clear the buffer by reading all data
+            Thread.sleep(PROMPT_WAIT_MS);
+            readAvailableData(in, new StringBuilder());
 
-            // Always execute 'show spanning-tree' for details
             logger.debug("Executing 'show spanning-tree' on {}", device.getIpAddress());
             String detailOutput = executeCommandInSession(in, out, "show spanning-tree");
 
-            // Always parse details from 'show spanning-tree'
             parseSpanningTreeInfo(detailOutput, node);
 
-            logger.info("Successfully retrieved RSTP info for {}: version={}, cost={}, ports={}", device.getDeviceName(), node.getVersion(), node.getRootCost(), node.getPorts().size());
+            logger.info("Successfully retrieved RSTP info for {}: version={}, cost={}, ports={}",
+                    device.getDeviceName(), node.getVersion(), node.getRootCost(), node.getPorts().size());
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            logger.error("Operation interrupted for {}", device.getIpAddress());
             throw new IOException("Operation interrupted", e);
+        } catch (IOException e) {
+            closeConnection(device.getIpAddress());
+            throw e;
         } catch (Exception e) {
-            logger.error("Failed to get RSTP info for {}: {}", device.getIpAddress(), e.getMessage());
-            throw new IOException("Failed to get RSTP info", e);
-        } finally {
-            if (channel != null && channel.isConnected()) {
-                channel.disconnect();
-            }
-            if (session != null && session.isConnected()) {
-                session.disconnect();
-            }
+            closeConnection(device.getIpAddress());
+            throw new IOException("Failed to get RSTP info: " + e.getMessage(), e);
         }
+        // NOTE: Connection kept open for LLDP discovery
 
         return node;
+    }
+
+    /**
+     * Executes the LLDP discovery logic with fallback command support.
+     * Thread-safety is guaranteed by internal locking on the device IP.
+     *
+     * @param device the device to query
+     * @return LLDP neighbor information output
+     * @throws IOException if SSH communication fails
+     */
+    public String getLLDPNeighborInfo(PlanetSwitchDevice device) throws IOException {
+        String ip = device.getIpAddress();
+        Object lock = deviceLocks.computeIfAbsent(ip, k -> new Object());
+
+        synchronized (lock) {
+            try {
+                SSHConnection conn = getOrCreateConnection(device);
+                InputStream in = conn.channel().getInputStream();
+                OutputStream out = conn.channel().getOutputStream();
+
+                // Clear any pending data
+                while (in.available() > 0) in.read();
+
+                String response = executeCommandInSession(in, out, "show lldp neighbor");
+
+                // Fallback to plural form if the first one failed or returned nothing useful
+                if (isInvalidResponse(response)) {
+                    logger.debug("Falling back to 'show lldp neighbors' for {}", ip);
+                    response = executeCommandInSession(in, out, "show lldp neighbors");
+                }
+
+                return response;
+
+            } catch (Exception e) {
+                closeConnection(ip);
+                throw new IOException("LLDP communication error with " + ip + ": " + e.getMessage(), e);
+            }
+        }
     }
 
     /**
@@ -212,58 +316,31 @@ public class RSTPSSHService {
     }
 
     /**
-     * Executes a command and returns the output.
+     * Executes a MAC address table command and returns the output.
      *
-     * @return the mac address table output
-     * @throws IOException if ssh fails
-     * @throws JSchException if the connection fails
-     * @throws InterruptedException if interrupted
-     */
-    public String executeMacTableCommand(PlanetSwitchDevice device) throws IOException, JSchException, InterruptedException {
-        return executeSshCommand(device, "show mac address-table");
-    }
-
-    /**
-     * Executes an SSH command and returns the output.
-     *
-     * @param command the command to execute
-     * @return command output
+     * @param device the device to query
+     * @return the MAC address table output
      * @throws IOException if SSH fails
-     * @throws InterruptedException if interrupted
      */
-    private String executeSshCommand(PlanetSwitchDevice device, String command) throws IOException, InterruptedException {
+    public String executeMacTableCommand(PlanetSwitchDevice device) throws IOException {
+        String ip = device.getIpAddress();
+        Object lock = deviceLocks.computeIfAbsent(ip, k -> new Object());
 
-        ChannelShell channel = channels.get(device.getMacAddress());
-        try {
-            if (!channel.isConnected()) {
-                throw new IOException("SSH channel failed to connect");
+        synchronized (lock) {
+            try {
+                SSHConnection conn = getOrCreateConnection(device);
+                InputStream in = conn.channel().getInputStream();
+                OutputStream out = conn.channel().getOutputStream();
+
+                // Clear any pending data
+                while (in.available() > 0) in.read();
+
+                return executeCommandInSession(in, out, "show mac address-table");
+
+            } catch (Exception e) {
+                closeConnection(ip);
+                throw new IOException("MAC table command error for " + ip + ": " + e.getMessage(), e);
             }
-
-            InputStream in = channel.getInputStream();
-            OutputStream out = channel.getOutputStream();
-
-            Thread.sleep(INITIAL_WAIT_MS);
-
-            // Disable pagination
-            sendLine(out, "terminal length 0");
-            Thread.sleep(PROMPT_WAIT_MS);
-            readAvailableData(in, new StringBuilder());
-
-            // Execute command
-            sendLine(out, command);
-            Thread.sleep(AFTER_COMMAND_WAIT_MS);
-
-            // Read output
-            StringBuilder output = new StringBuilder();
-            readCommandOutput(in, output);
-
-            String result = cleanOutput(output.toString(), command);
-            logger.info("Command '{}' executed successfully, output length: {} chars",command, result.length());
-
-            return result;
-
-        } finally {
-            channel.disconnect();
         }
     }
 
@@ -768,25 +845,33 @@ public class RSTPSSHService {
     }
 
     /**
-     * Closes all active SSH channels and clears the channel map.
+     * Closes all active SSH connections and clears resources.
      * Should be called when the RSTP topology dialog is closed.
      */
     public void shutdown() {
-        logger.info("Shutting down RSTPSSHService, closing {} active channels", channels.size());
+        logger.info("Shutting down RSTPSSHService, closing {} active connections", connections.size());
 
-        for (Map.Entry<String, ChannelShell> entry : channels.entrySet()) {
+        for (Map.Entry<String, SSHConnection> entry : connections.entrySet()) {
             try {
-                ChannelShell channel = entry.getValue();
-                if (channel != null && channel.isConnected()) {
-                    channel.disconnect();
-                    logger.debug("Closed SSH channel for device: {}", entry.getKey());
+                SSHConnection conn = entry.getValue();
+                if (conn != null) {
+                    conn.close();
+                    logger.debug("Closed SSH connection for device: {}", entry.getKey());
                 }
             } catch (Exception e) {
-                logger.error("Error closing SSH channel for device {}: {}", entry.getKey(), e.getMessage());
+                logger.error("Error closing SSH connection for device {}: {}", entry.getKey(), e.getMessage());
             }
         }
 
-        channels.clear();
+        connections.clear();
+        deviceLocks.clear();
         logger.info("RSTPSSHService shutdown complete");
     }
+
+    private boolean isInvalidResponse(String resp) {
+        if (resp == null || resp.isBlank()) return true;
+        String lower = resp.toLowerCase();
+        return lower.contains("invalid") || lower.contains("incomplete") || lower.contains("unknown");
+    }
+
 }

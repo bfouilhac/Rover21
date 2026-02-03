@@ -1,149 +1,215 @@
 package com.rover.services;
 
-import com.jcraft.jsch.JSchException;
+import com.rover.model.rstp.LLDPEntry;
 import com.rover.model.rstp.RSTPLink;
 import com.rover.model.rstp.RSTPNode;
+import com.rover.utils.LLDPParser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
 import java.util.*;
+import java.util.concurrent.*;
+import java.util.function.Consumer;
 
 /**
- * Service for discovering physical links between switches using MAC address tables.
+ * High-level service for network topology discovery.
+ * <p>
+ * Uses LLDP data to identify physical connections between switches.
+ * Discovery is performed in parallel with a configurable thread pool.
+ * </p>
  *
- * @author Benjamin FOUILHAC, ADM21 - January 2026
+ * @author Benjamin FOUILHAC, ADM21 - February 2026
  */
 public class LinkDiscoveryService {
 
     private static final Logger logger = LoggerFactory.getLogger(LinkDiscoveryService.class);
 
-    private final RSTPSSHService sshService;
-    private final MACTableParser parser;
+    /** Maximum number of threads for parallel LLDP discovery */
+    private static final int MAX_THREAD_POOL_SIZE = 20;
 
-    public LinkDiscoveryService() {
-        this.sshService = new RSTPSSHService();
-        this.parser = new MACTableParser();
+    /** Timeout per device for LLDP query (seconds) */
+    private static final int DISCOVERY_TIMEOUT_SECONDS = 30;
+
+    private final RSTPSSHService sshService;
+
+    public LinkDiscoveryService(RSTPSSHService sshService) {
+        this.sshService = sshService;
     }
 
     /**
-     * Discovers links between nodes using MAC address tables.
+     * Discovers links between nodes using LLDP, with parallel execution.
      *
-     * @param nodes list of network nodes
-     * @return list of discovered links
+     * @param nodes the list of nodes to query
+     * @return list of discovered links (deduplicated)
      */
     public List<RSTPLink> discoverLinks(List<RSTPNode> nodes) {
-        logger.info("Discovering links between {} nodes", nodes.size());
+        return discoverLinks(nodes, null);
+    }
 
-        Map<String, RSTPNode> macToNode = buildMacIndex(nodes);
-        Map<RSTPNode, List<MACTableParser.MACTableEntry>> macTables = retrieveMacTables(nodes);
-
-        List<RSTPLink> links = new ArrayList<>();
-        Set<String> processedPairs = new HashSet<>();
-
-        for (Map.Entry<RSTPNode, List<MACTableParser.MACTableEntry>> entry : macTables.entrySet()) {
-            RSTPNode sourceNode = entry.getKey();
-            List<MACTableParser.MACTableEntry> entries = entry.getValue();
-
-            for (MACTableParser.MACTableEntry macEntry : entries) {
-                String targetMac = macEntry.getMacAddress();
-                RSTPNode targetNode = macToNode.get(targetMac);
-
-                if (targetNode != null && !targetNode.equals(sourceNode)) {
-                    String sourcePort = macEntry.getPort();
-                    String targetPort = findRemotePort(targetNode, sourceNode.getDevice().getMacAddress(), macTables);
-
-                    if (sourcePort != null && targetPort != null) {
-                        String linkId = createLinkId(sourceNode, targetNode);
-                        if (processedPairs.add(linkId)) {
-                            RSTPLink link = new RSTPLink(
-                                    sourceNode, extractPortNumber(sourcePort),
-                                    targetNode, extractPortNumber(targetPort)
-                            );
-                            links.add(link);
-                            logger.debug("Discovered link: {} [{}] <-> {} [{}]",
-                                    sourceNode.getDeviceName(), sourcePort,
-                                    targetNode.getDeviceName(), targetPort);
-                        }
-                    }
-                }
-            }
+    /**
+     * Discovers links between nodes using LLDP, with parallel execution and progress callback.
+     *
+     * @param nodes the list of nodes to query
+     * @param onLinkDiscovered callback invoked for each newly discovered link (can be null)
+     * @return list of discovered links (deduplicated)
+     */
+    public List<RSTPLink> discoverLinks(List<RSTPNode> nodes, Consumer<RSTPLink> onLinkDiscovered) {
+        if (nodes == null || nodes.isEmpty()) {
+            return Collections.emptyList();
         }
 
-        logger.info("Discovered {} links", links.size());
+        logger.info("Starting parallel LLDP discovery for {} nodes", nodes.size());
+        long startTime = System.currentTimeMillis();
+
+        // Build MAC lookup map (read-only, shared across threads)
+        Map<String, RSTPNode> macMap = buildMacMap(nodes);
+
+        // Create thread pool: min(nodes.size(), MAX_THREAD_POOL_SIZE)
+        int poolSize = Math.min(nodes.size(), MAX_THREAD_POOL_SIZE);
+        ExecutorService executor = Executors.newFixedThreadPool(poolSize);
+
+        try {
+            // Submit discovery tasks for each node
+            List<Future<List<RSTPLink>>> futures = new ArrayList<>();
+            for (RSTPNode srcNode : nodes) {
+                futures.add(executor.submit(() -> discoverLinksForNode(srcNode, macMap)));
+            }
+
+            // Collect and deduplicate results
+            List<RSTPLink> allLinks = new ArrayList<>();
+            Set<String> seen = new HashSet<>();
+
+            for (int i = 0; i < futures.size(); i++) {
+                Future<List<RSTPLink>> future = futures.get(i);
+                RSTPNode srcNode = nodes.get(i);
+
+                try {
+                    List<RSTPLink> nodeLinks = future.get(DISCOVERY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+
+                    for (RSTPLink link : nodeLinks) {
+                        String key = createLinkKey(link);
+                        if (seen.add(key)) {
+                            allLinks.add(link);
+                            // Notify callback if provided
+                            if (onLinkDiscovered != null) {
+                                onLinkDiscovered.accept(link);
+                            }
+                        }
+                    }
+
+                    logger.debug("LLDP discovery for {} returned {} links",
+                            srcNode.getDeviceName(), nodeLinks.size());
+
+                } catch (TimeoutException e) {
+                    logger.warn("LLDP discovery timed out for {} after {}s",
+                            srcNode.getDeviceName(), DISCOVERY_TIMEOUT_SECONDS);
+                } catch (ExecutionException e) {
+                    logger.error("LLDP discovery failed for {}: {}",
+                            srcNode.getDeviceName(), e.getCause().getMessage());
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    logger.warn("LLDP discovery interrupted");
+                    break;
+                }
+            }
+
+            long elapsed = System.currentTimeMillis() - startTime;
+            logger.info("LLDP discovery completed: {} links found in {}ms (parallel with {} threads)",
+                    allLinks.size(), elapsed, poolSize);
+
+            return allLinks;
+
+        } finally {
+            shutdownExecutor(executor);
+        }
+    }
+
+    /**
+     * Builds a MAC address to node lookup map.
+     */
+    private Map<String, RSTPNode> buildMacMap(List<RSTPNode> nodes) {
+        Map<String, RSTPNode> macMap = new HashMap<>();
+        for (RSTPNode node : nodes) {
+            String mac = LLDPParser.normalizeMac(node.getDevice().getMacAddress());
+            macMap.put(mac, node);
+        }
+        return macMap;
+    }
+
+    /**
+     * Discovers links for a single node by querying its LLDP neighbors.
+     * This method is called from worker threads.
+     *
+     * @param srcNode the source node to query
+     * @param macMap the MAC to node lookup map (read-only)
+     * @return list of links found from this node
+     */
+    private List<RSTPLink> discoverLinksForNode(RSTPNode srcNode, Map<String, RSTPNode> macMap) {
+        List<RSTPLink> links = new ArrayList<>();
+
+        try {
+            String output = sshService.getLLDPNeighborInfo(srcNode.getDevice());
+            List<LLDPEntry> entries = LLDPParser.parse(output);
+
+            for (LLDPEntry entry : entries) {
+                RSTPNode dstNode = macMap.get(entry.remoteMac());
+
+                if (dstNode != null && !srcNode.equals(dstNode)) {
+                    int srcPort = extractPort(entry.localPort());
+                    int dstPort = extractPort(entry.remotePort());
+                    links.add(new RSTPLink(srcNode, srcPort, dstNode, dstPort));
+                }
+            }
+
+        } catch (Exception e) {
+            logger.error("LLDP query failed for {}: {}", srcNode.getDeviceName(), e.getMessage());
+        }
+
         return links;
     }
 
     /**
-     * Builds an index mapping MAC addresses to nodes.
+     * Gracefully shuts down the executor service.
      */
-    private Map<String, RSTPNode> buildMacIndex(List<RSTPNode> nodes) {
-        Map<String, RSTPNode> index = new HashMap<>();
-        for (RSTPNode node : nodes) {
-            String mac = node.getDevice().getMacAddress().toUpperCase();
-            index.put(mac, node);
-        }
-        return index;
-    }
-
-    /**
-     * Retrieves MAC address tables for all nodes.
-     */
-    private Map<RSTPNode, List<MACTableParser.MACTableEntry>> retrieveMacTables(List<RSTPNode> nodes) {
-        Map<RSTPNode, List<MACTableParser.MACTableEntry>> tables = new HashMap<>();
-
-        for (RSTPNode node : nodes) {
-            try {
-                String output = sshService.executeMacTableCommand(node.getDevice());
-                List<MACTableParser.MACTableEntry> entries = parser.parse(output);
-                tables.put(node, entries);
-                logger.debug("Retrieved {} MAC entries from {}", entries.size(), node.getDeviceName());
-            } catch (IOException e) {
-                logger.error("Failed to get MAC table from {}: {}", node.getDeviceName(), e.getMessage());
-                tables.put(node, new ArrayList<>());
-            } catch (JSchException | InterruptedException e) {
-                logger.error("SSH connection failed for {}: {}", node.getDeviceName(), e.getMessage());
-                Thread.currentThread().interrupt();
+    private void shutdownExecutor(ExecutorService executor) {
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                logger.warn("LLDP executor did not terminate in time, forcing shutdown");
+                executor.shutdownNow();
             }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
         }
-
-        return tables;
     }
 
     /**
-     * Finds the remote port on the target node that connects back to the source.
+     * Creates a unique key for a link to prevent duplicates.
+     * The key is symmetric: A-B and B-A produce the same key.
      */
-    private String findRemotePort(RSTPNode targetNode, String sourceMac,
-                                  Map<RSTPNode, List<MACTableParser.MACTableEntry>> macTables) {
-        List<MACTableParser.MACTableEntry> targetEntries = macTables.get(targetNode);
-        if (targetEntries == null) return null;
+    private String createLinkKey(RSTPLink link) {
+        String m1 = link.getSourceNode().getDevice().getMacAddress();
+        String m2 = link.getDestinationNode().getDevice().getMacAddress();
+        int p1 = link.getSourcePort();
+        int p2 = link.getDestinationPort();
 
-        for (MACTableParser.MACTableEntry entry : targetEntries) {
-            if (entry.getMacAddress().equalsIgnoreCase(sourceMac)) {
-                return entry.getPort();
-            }
-        }
-
-        return null;
+        return (m1.compareTo(m2) < 0)
+                ? m1 + p1 + m2 + p2
+                : m2 + p2 + m1 + p1;
     }
 
     /**
-     * Creates a bidirectional link ID (sorted to avoid duplicates).
+     * Extracts the port number from a port identifier string.
+     * Examples: "gi1" -> 1, "Ethernet1/0/5" -> 5
      */
-    private String createLinkId(RSTPNode node1, RSTPNode node2) {
-        List<String> ips = Arrays.asList(node1.getIpAddress(), node2.getIpAddress());
-        Collections.sort(ips);
-        return ips.get(0) + "<->" + ips.get(1);
-    }
+    private int extractPort(String portString) {
+        if (portString == null) return 0;
 
-    /**
-     * Extracts port number from the port string.
-     * "gi2" -> 2, "gi1/2" -> 2
-     */
-    private int extractPortNumber(String port) {
-        if (port == null) return 0;
-        String[] parts = port.split("/");
-        String lastPart = parts[parts.length - 1];
-        return Integer.parseInt(lastPart.replace("\\D", ""));
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("(\\d+)$")
+                .matcher(portString.trim());
+
+        return matcher.find() ? Integer.parseInt(matcher.group(1)) : 0;
     }
 }

@@ -34,6 +34,8 @@ public class RSTPNode {
         this.version = RSTPVersion.UNKNOWN;
     }
 
+    public boolean isRootBridge() {return this.isRootBridge;}
+
     public PlanetSwitchDevice getDevice() {
         return device;
     }

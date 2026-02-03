@@ -41,6 +41,35 @@ public class RSTPTopology {
     }
 
     /**
+     * Returns all discovered links in the topology.
+     *
+     * @return defensive copy of the links list
+     */
+    public List<RSTPLink> getLinks() {
+        return new ArrayList<>(links);
+    }
+
+    /**
+     * Adds a link to the topology if not already present.
+     *
+     * @param link the link to add
+     */
+    public void addLink(RSTPLink link) {
+        if (link != null && !links.contains(link)) {
+            links.add(link);
+        }
+    }
+
+    /**
+     * Returns the identified root bridge node.
+     *
+     * @return the root bridge, or null if not identified
+     */
+    public RSTPNode getRootBridge() {
+        return rootBridge;
+    }
+
+    /**
      * Checks if the topology is valid (has at least one node).
      */
     public boolean isValid() {return !nodes.isEmpty();}

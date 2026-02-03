@@ -28,6 +28,12 @@ public class RSTPPort {
         this.pathCost = pathCost;
     }
 
+    public RSTPPortRole getRole(){return this.role;}
+
+    public RSTPPortState getState(){return this.state;}
+
+    public int getPortNumber(){return this.portNumber;}
+
     @Override
     public String toString() {
         return String.format("Port %d: %s (%s) - Cost: %d", portNumber, state, role, pathCost);

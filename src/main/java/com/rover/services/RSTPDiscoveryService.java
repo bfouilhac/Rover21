@@ -1,6 +1,7 @@
 package com.rover.services;
 
 import com.rover.model.PlanetSwitchDevice;
+import com.rover.model.rstp.RSTPLink;
 import com.rover.model.rstp.RSTPNode;
 import com.rover.model.rstp.RSTPTopology;
 import org.slf4j.Logger;
@@ -15,123 +16,160 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Service for discovering and building RSTP topology via SSH.
- * Simplified version that only retrieves device information.
+ * Handles both RSTP information retrieval and LLDP link discovery.
  *
- * @author Benjamin FOUILHAC, ADM21 - January 2026
+ * @author Benjamin FOUILHAC, ADM21 - January/February 2026
  */
 public class RSTPDiscoveryService {
 
     private static final Logger logger = LoggerFactory.getLogger(RSTPDiscoveryService.class);
 
+    /**
+     * Callback interface for real-time discovery progress updates.
+     */
+    public interface DiscoveryProgressCallback {
+        void onNodeDiscovered(RSTPNode node);
+        void onLinkDiscovered(RSTPLink link);
+        void onProgress(String messageKey);
+    }
+
     private final RSTPSSHService sshService;
+    private final LinkDiscoveryService linkDiscoveryService;
+    private DiscoveryProgressCallback progressCallback;
 
     public RSTPDiscoveryService() {
         this.sshService = new RSTPSSHService();
+        this.linkDiscoveryService = new LinkDiscoveryService(sshService);
+    }
+
+    /**
+     * Sets the callback for real-time progress updates.
+     *
+     * @param callback the callback to notify on discoveries
+     */
+    public void setProgressCallback(DiscoveryProgressCallback callback) {
+        this.progressCallback = callback;
     }
 
     /**
      * Discovers RSTP topology from a list of devices.
      * <p>
-     * Optimized version using adaptive thread pool where each thread handles:
-     * 1. RSTP version check
-     * 2. Information retrieval if RSTP is enabled
+     * Two-phase discovery:
+     * 1. RSTP information retrieval for each device (parallel)
+     * 2. LLDP link discovery between devices (sequential per device, but can overlap)
      * </p>
      *
      * @param devices list of devices to analyze
      * @return complete RSTP topology
      */
     public RSTPTopology discoverTopology(List<PlanetSwitchDevice> devices) {
-        logger.info("Starting RSTP topology discovery for {} devices", devices.size());
-
         RSTPTopology topology = new RSTPTopology();
 
-        // Filter devices with SSH capabilities
+        // Filter SSH-capable devices
         List<PlanetSwitchDevice> sshDevices = devices.stream()
-                .filter(d -> d.isSSHUp() &&
-                        d.getUsername() != null &&
-                        d.getPassword() != null)
+                .filter(d -> d.isSSHUp() && d.getUsername() != null && d.getPassword() != null)
                 .toList();
 
         if (sshDevices.isEmpty()) {
-            logger.warn("No devices with SSH available");
+            logger.warn("No SSH-capable devices to discover");
             return topology;
         }
 
-        logger.info("Found {} SSH-capable devices, checking RSTP in parallel", sshDevices.size());
+        // Use limited thread pool to avoid overwhelming devices
+        ExecutorService executor = Executors.newFixedThreadPool(Math.min(sshDevices.size(), 5));
 
-        // Adaptive thread pool: min(device count, 20 threads max)
-        int threadPoolSize = Math.min(sshDevices.size(), 20);
-        logger.info("Creating adaptive thread pool with {} threads", threadPoolSize);
+        try {
+            // Phase 1: Discover RSTP info for each device
+            notifyProgress("status.topology_discovering");
+            logger.info("Phase 1: Starting RSTP discovery for {} devices", sshDevices.size());
 
-        try (ExecutorService executor = Executors.newFixedThreadPool(threadPoolSize)) {
             List<Future<RSTPNode>> futures = new ArrayList<>();
-
-            // Each thread handles complete device processing
             for (PlanetSwitchDevice device : sshDevices) {
-                futures.add(executor.submit(() -> processDevice(device)));
+                futures.add(executor.submit(() -> fetchAndEnrichNode(device)));
             }
 
-            // Collect results with timeout
             for (Future<RSTPNode> future : futures) {
                 try {
-                    RSTPNode node = future.get(30, TimeUnit.SECONDS);
+                    RSTPNode node = future.get(20, TimeUnit.SECONDS);
                     if (node != null) {
                         topology.addNode(node);
-                        logger.info("Added node to topology: {} (Bridge: {}, Root: {})",
-                            node.getDeviceName(), node.getBridgeId(), node.getRootBridgeId());
+                        notifyNodeDiscovered(node);
                     }
                 } catch (Exception e) {
-                    logger.error("Failed to get node from future: {}", e.getMessage());
-                    Thread.currentThread().interrupt();
+                    logger.error("Error fetching node details: {}", e.getMessage());
                 }
             }
-        } // ExecutorService automatically closed here
 
-        identifyRootBridge(topology);
+            logger.info("Phase 1 complete: {} RSTP nodes discovered", topology.getNodeCount());
 
-        logger.info("Topology discovery complete: {} nodes", topology.getNodeCount());
+            // Phase 2: Discover links via LLDP in parallel (only if we have multiple nodes)
+            if (topology.isValid() && topology.getNodeCount() > 1) {
+                notifyProgress("status.topology_discovering_links");
+                logger.info("Phase 2: Starting parallel LLDP link discovery...");
+
+                // Use callback version to notify UI as links are discovered
+                List<RSTPLink> links = linkDiscoveryService.discoverLinks(
+                        topology.getNodes(),
+                        link -> {
+                            topology.addLink(link);
+                            notifyLinkDiscovered(link);
+                        }
+                );
+
+                logger.info("Phase 2 complete: {} unique links discovered", links.size());
+            }
+
+            // Phase 3: Identify root bridge
+            identifyRootBridge(topology);
+
+        } finally {
+            executor.shutdown();
+            try {
+                if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                    executor.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                executor.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+        }
 
         return topology;
     }
 
     /**
-     * Processes a single device: checks RSTP enablement and retrieves info if enabled.
-     * <p>
-     * This method is called by each worker thread in the pool.
-     * </p>
-     *
-     * @param device the device to process
-     * @return RSTPNode if RSTP is enabled and info retrieved successfully, null otherwise
+     * Fetches and enriches a node with RSTP information.
+     * First checks if RSTP is enabled, then retrieves full RSTP details.
      */
-    private RSTPNode processDevice(PlanetSwitchDevice device) {
+    private RSTPNode fetchAndEnrichNode(PlanetSwitchDevice device) {
         try {
-            logger.info("Processing device: {} ({})", device.getDeviceName(), device.getIpAddress());
-
-            // Step 1: Check if RSTP is enabled
-            boolean rstpEnabled = sshService.isRSTPEnabled(device);
-
-            if (!rstpEnabled) {
-                logger.info("RSTP not enabled on {} ({})", device.getDeviceName(), device.getIpAddress());
-                return null;
-            }
-
-            logger.info("RSTP enabled on {}, retrieving info...", device.getIpAddress());
-
-            // Step 2: Retrieve RSTP information
-            RSTPNode node = sshService.getRSTPInfo(device);
-
-            if (node != null) {
-                logger.info("Successfully retrieved RSTP info from {} - Bridge: {}, Root: {}, Cost: {}",
-                    device.getIpAddress(), node.getBridgeId(), node.getRootBridgeId(), node.getRootCost());
+            if (sshService.isRSTPEnabled(device)) {
+                logger.debug("RSTP enabled on {}, retrieving info...", device.getIpAddress());
+                return sshService.getRSTPInfo(device);
             } else {
-                logger.warn("getRSTPInfo returned null for {}", device.getIpAddress());
+                logger.debug("RSTP not enabled on {}", device.getIpAddress());
             }
-
-            return node;
-
         } catch (Exception e) {
-            logger.error("Failed to process device {} ({}): {}", device.getDeviceName(), device.getIpAddress(), e.getMessage());
-            return null;
+            logger.error("Failed to get RSTP info for {}: {}", device.getIpAddress(), e.getMessage());
+        }
+        return null;
+    }
+
+    private void notifyProgress(String messageKey) {
+        if (progressCallback != null) {
+            progressCallback.onProgress(messageKey);
+        }
+    }
+
+    private void notifyNodeDiscovered(RSTPNode node) {
+        if (progressCallback != null) {
+            progressCallback.onNodeDiscovered(node);
+        }
+    }
+
+    private void notifyLinkDiscovered(RSTPLink link) {
+        if (progressCallback != null) {
+            progressCallback.onLinkDiscovered(link);
         }
     }
 
@@ -140,7 +178,7 @@ public class RSTPDiscoveryService {
      * The root bridge is either:
      * 1. The device with rootCost = 0 (it IS the root bridge)
      * 2. The device whose rootBridgeId matches its own bridgeId
-     * 3. The device with the lowest bridge priority (if root is not in our topology)
+     * 3. The device with the lowest bridge priority (if the root is not in our topology)
      */
     private void identifyRootBridge(RSTPTopology topology) {
         RSTPNode rootBridge = null;

@@ -2,11 +2,13 @@ package com.rover.ui;
 
 import com.rover.controller.MainController;
 import com.rover.model.PlanetSwitchDevice;
+import com.rover.model.rstp.RSTPLink;
 import com.rover.model.rstp.RSTPNode;
 import com.rover.model.rstp.RSTPTopology;
 import com.rover.model.rstp.RSTPVersion;
 import com.rover.services.ExportService;
 import com.rover.services.RSTPDiscoveryService;
+import com.rover.ui.graph.RSTPGraphPanel;
 import com.rover.utils.LanguageManager;
 import com.rover.utils.PreferencesManager;
 import org.slf4j.Logger;
@@ -31,29 +33,20 @@ public class RSTPTopologyDialog extends JDialog {
 
     private static final Logger logger = LoggerFactory.getLogger(RSTPTopologyDialog.class);
 
-    /*
-     * ===================================================================================
-     * RESPONSIVE SIZING CONSTANTS
-     * ===================================================================================
-     * Dialog sizing follows the same responsive principles as MainWindow.
-     * ===================================================================================
-     */
-
     private static final int DIALOG_WIDTH = 1100;
     private static final int DIALOG_HEIGHT = 550;
 
-    /** Minimum dialog dimensions to ensure table and buttons remain usable. */
-    private static final int MIN_DIALOG_WIDTH = 800;
-    private static final int MIN_DIALOG_HEIGHT = 350;
+    // Sets minimum size: 16:9 ratio and 1066x600px
+    private static final int MIN_DIALOG_WIDTH = 1066;
+    private static final int MIN_DIALOG_HEIGHT = 600;
 
-    /** Padding around the main content area to match MainWindow styling. */
     private static final int CONTENT_PADDING = 15;
 
     // Button sizing: responsive from 90px (min) to 160px (comfortable max)
     private static final int BUTTON_HEIGHT = 32;
     private static final int BUTTON_MIN_WIDTH = 90;
     private static final int BUTTON_MAX_WIDTH = 160;
-    /** Button width = 14% of dialog width. */
+
     private static final double BUTTON_WIDTH_RATIO = 0.14;
 
     private static final Font FONT_TABLE = new Font("Segoe UI", Font.PLAIN, 12);
@@ -92,6 +85,8 @@ public class RSTPTopologyDialog extends JDialog {
     private JButton refreshButton;
     private JButton closeButton;
 
+    private RSTPGraphPanel graphPanel;
+
     /**
      * Creates a new RSTP Topology dialog.
      * <p>
@@ -100,7 +95,7 @@ public class RSTPTopologyDialog extends JDialog {
      * during resizing.
      * </p>
      *
-     * @param parent  the parent frame for modal positioning
+     * @param parent the parent frame for modal positioning
      * @param devices the list of devices to discover RSTP topology for
      */
     public RSTPTopologyDialog(JFrame parent, List<PlanetSwitchDevice> devices) {
@@ -124,7 +119,7 @@ public class RSTPTopologyDialog extends JDialog {
             }
         });
 
-        // Add component listener for responsive resizing
+        // Add a component listener for responsive resizing
         addComponentListener(new ComponentAdapter() {
             @Override
             public void componentResized(ComponentEvent e) {
@@ -144,11 +139,13 @@ public class RSTPTopologyDialog extends JDialog {
     /**
      * Initializes UI components.
      * <p>
-     * Creates the main layout with proper padding around the content area
-     * to ensure consistent spacing from window edges, matching MainWindow styling.
+     * Creates the main layout with a tabbed pane containing graph and table views.
+     * The graph view provides interactive network topology visualization.
+     * The table view shows detailed RSTP information in tabular format.
      * </p>
      */
     private void initComponents() {
+        JTabbedPane tabbedPane;
         createTable();
 
         // Main content panel with padding from window edges
@@ -158,9 +155,21 @@ public class RSTPTopologyDialog extends JDialog {
 
         centerPanel.add(createStatusBar(), BorderLayout.NORTH);
 
+        // Create a tabbed pane with graph and table views
+        tabbedPane = new JTabbedPane();
+        tabbedPane.setFont(FONT_TABLE);
+
+        // Table View
         JScrollPane scrollPane = new JScrollPane(rstpTable);
         scrollPane.setBorder(BorderFactory.createLineBorder(new Color(200, 200, 200)));
-        centerPanel.add(scrollPane, BorderLayout.CENTER);
+        tabbedPane.addTab(lang.get("topology.tab_table"), scrollPane);
+
+        // Graph View
+        graphPanel = new RSTPGraphPanel();
+        tabbedPane.addTab(lang.get("topology.tab_graph"), graphPanel);
+
+
+        centerPanel.add(tabbedPane, BorderLayout.CENTER);
 
         add(centerPanel, BorderLayout.CENTER);
         add(createButtonPanel(), BorderLayout.SOUTH);
@@ -373,8 +382,8 @@ public class RSTPTopologyDialog extends JDialog {
     /**
      * Updates a button's preferred and maximum size for responsive behavior.
      *
-     * @param button the button to update (may be null)
-     * @param size   the new size to apply
+     * @param button the button to update (maybe null)
+     * @param size the new size to apply
      */
     private void updateButtonSize(JButton button, Dimension size) {
         if (button != null) {
@@ -481,7 +490,7 @@ public class RSTPTopologyDialog extends JDialog {
     }
 
     /**
-     * Discovers RSTP topology and displays in a table.
+     * Discovers RSTP topology and displays in a table with real-time updates.
      */
     private void discoverAndDisplay(List<PlanetSwitchDevice> devices) {
         // Cancel any existing discovery
@@ -492,6 +501,26 @@ public class RSTPTopologyDialog extends JDialog {
         displayBasicInfo(devices);
 
         updateStatus(lang.get("status.topology_discovering"));
+
+        // Set up callback for real-time updates
+        discoveryService.setProgressCallback(new RSTPDiscoveryService.DiscoveryProgressCallback() {
+            @Override
+            public void onNodeDiscovered(RSTPNode node) {
+                SwingUtilities.invokeLater(() -> updateNodeInTable(node));
+            }
+
+            @Override
+            public void onLinkDiscovered(RSTPLink link) {
+                logger.debug("Link discovered: {} <-> {}",
+                        link.getSourceNode().getDeviceName(),
+                        link.getDestinationNode().getDeviceName());
+            }
+
+            @Override
+            public void onProgress(String messageKey) {
+                updateStatus(lang.get(messageKey));
+            }
+        });
 
         discoveryWorker = new SwingWorker<>() {
             @Override
@@ -510,9 +539,14 @@ public class RSTPTopologyDialog extends JDialog {
                     topology = get();
 
                     if (topology.isValid()) {
-                        updateStatus(lang.get("status.topology_update_rstp_information"));
-                        updateWithRstpInfo();
-                        updateStatus(lang.get("status.topology_ready", topology.getNodeCount()));
+                        // Update the graph panel with complete topology
+                        if (graphPanel != null) {
+                            graphPanel.setTopology(topology);
+                        }
+
+                        int linkCount = topology.getLinks().size();
+                        updateStatus(lang.get("status.topology_ready", topology.getNodeCount())
+                                + (linkCount > 0 ? " - " + linkCount + " link(s)" : ""));
                     } else {
                         logger.warn("No RSTP-enabled devices found, showing basic info only");
                         updateStatus(lang.get("status.topology_ready_empty"));
@@ -520,12 +554,27 @@ public class RSTPTopologyDialog extends JDialog {
                 } catch (Exception e) {
                     logger.error("Failed to discover topology", e);
                     showError(lang.get("error.topology_discover", e.getMessage()));
-                    Thread.currentThread().interrupt();
                 }
             }
         };
 
         discoveryWorker.execute();
+    }
+
+    /**
+     * Updates a single node's data in the table (called from callback).
+     */
+    private void updateNodeInTable(RSTPNode node) {
+        int row = findDeviceRow(node.getIpAddress());
+        if (row >= 0) {
+            tableModel.setValueAt(formatStpMode(node.getVersion()), row, COL_STP);
+            tableModel.setValueAt(extractPriority(node.getBridgeId()), row, COL_PRIORITY);
+            tableModel.setValueAt(node.getHopCount() > 0 ? String.valueOf(node.getHopCount()) : "-", row, COL_HOP_COUNT);
+            tableModel.setValueAt(extractMac(node.getRootBridgeId()).toUpperCase(), row, COL_ROOT_MAC);
+            tableModel.setValueAt(String.valueOf(node.getRootCost()), row, COL_PATH_COST);
+            tableModel.setValueAt(node.getTopologyChangeTime() != null ? node.getTopologyChangeTime() : "-", row, COL_TC_TIME);
+            logger.debug("Updated table row for {} with RSTP info", node.getIpAddress());
+        }
     }
 
     /**
@@ -555,31 +604,6 @@ public class RSTPTopologyDialog extends JDialog {
 
             tableModel.addRow(row);
         }
-    }
-
-    /**
-     * Updates table with RSTP information from discovered topology.
-     */
-    private void updateWithRstpInfo() {
-        if (topology == null || !topology.isValid()) {
-            return;
-        }
-
-        for (RSTPNode node : topology.getNodes()) {
-            // Find the row for this device
-            int row = findDeviceRow(node.getIpAddress());
-
-            if (row >= 0) {
-                tableModel.setValueAt(formatStpMode(node.getVersion()), row, COL_STP);
-                tableModel.setValueAt(extractPriority(node.getBridgeId()), row, COL_PRIORITY);
-                tableModel.setValueAt(node.getHopCount() > 0 ? String.valueOf(node.getHopCount()) : "-", row, COL_HOP_COUNT);
-                tableModel.setValueAt(extractMac(node.getRootBridgeId()).toUpperCase(), row, COL_ROOT_MAC);
-                tableModel.setValueAt(String.valueOf(node.getRootCost()), row, COL_PATH_COST);
-                tableModel.setValueAt(node.getTopologyChangeTime() != null ? node.getTopologyChangeTime() : "-", row, COL_TC_TIME);
-            }
-        }
-
-        logger.info("Updated {} rows with RSTP information", topology.getNodeCount());
     }
 
     /**
@@ -629,7 +653,7 @@ public class RSTPTopologyDialog extends JDialog {
     }
 
     /**
-     * Refreshes the table by rediscovering topology.
+     * Refreshes both table and graph views by rediscovering topology.
      */
     private void refresh() {
         if (topology == null || topology.getNodes().isEmpty()) {
@@ -639,6 +663,11 @@ public class RSTPTopologyDialog extends JDialog {
         List<PlanetSwitchDevice> devices = topology.getNodes().stream()
                 .map(RSTPNode::getDevice)
                 .toList();
+
+        // Reset graph panel to show the loading state
+        if (graphPanel != null) {
+            graphPanel.setTopology(null);
+        }
 
         discoverAndDisplay(devices);
     }

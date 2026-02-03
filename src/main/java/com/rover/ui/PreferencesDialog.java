@@ -626,6 +626,7 @@ public class PreferencesDialog extends JDialog {
         customUsernameField.setText("");
         customPasswordField.setText("");
 
+        showInfo(lang.get("preferences.add_account_success_title"), lang.get("preferences.add_account_success_message"));
         logger.info("Custom credential added: {}", username.isEmpty() ? "[password only]" : username);
     }
 
