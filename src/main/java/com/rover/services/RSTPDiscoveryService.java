@@ -107,7 +107,7 @@ public class RSTPDiscoveryService {
                 notifyProgress("status.topology_discovering_links");
                 logger.info("Phase 2: Starting parallel LLDP link discovery...");
 
-                // Use callback version to notify UI as links are discovered
+                // Use the callback version to notify UI as links are discovered
                 List<RSTPLink> links = linkDiscoveryService.discoverLinks(
                         topology.getNodes(),
                         link -> {

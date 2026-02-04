@@ -571,7 +571,7 @@ public class PlanetDiscoveryService {
             List<String> strings = extractNullTerminatedStrings(data, length);
 
             if (!strings.isEmpty()) {
-                device.setDeviceName(strings.get(0));
+                device.setDeviceName(strings.getFirst());
             }
             if (strings.size() >= 2) {
                 device.setVersion(strings.get(1));

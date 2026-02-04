@@ -1,8 +1,6 @@
 package com.rover.utils;
 
 import com.rover.model.rstp.LLDPEntry;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,8 +17,6 @@ import java.util.regex.Pattern;
  * @author Benjamin FOUILHAC ADM21 - February 2026
  */
 public class LLDPParser {
-
-    private static final Logger logger = LoggerFactory.getLogger(LLDPParser.class);
 
     // Pattern for Table Format: Capture Group 1: Port, 2: MAC, 3: Remote Port
     private static final Pattern TABLE_LINE_PATTERN = Pattern.compile(
@@ -73,7 +69,7 @@ public class LLDPParser {
 
         String currentLocal = null;
         String currentMac = null;
-        String currentRemote = null;
+        String currentRemote;
 
         for (String line : lines) {
             Matcher mLocal = BLOCK_LOCAL_PORT.matcher(line);
@@ -81,7 +77,7 @@ public class LLDPParser {
             Matcher mRemote = BLOCK_REMOTE_PORT.matcher(line);
 
             if (mLocal.find()) {
-                // When we find a new 'Local Interface', it might be the start of a new block.
+                // When we find a new "Local Interface", it might be the start of a new block.
                 // If we already had data, we save it (though in the LLDP block, the order is usually Local -> Chassis -> Port)
                 currentLocal = mLocal.group(1).trim();
             } else if (mMac.find()) {

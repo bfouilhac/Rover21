@@ -165,7 +165,7 @@ public class RSTPGraphPanel extends JPanel {
         }
 
         for (RSTPLink link : topology.getLinks()) {
-            g.addEdge(link, link.getSourceNode(), link.getDestinationNode());
+            g.addEdge(link, link.sourceNode(), link.destinationNode());
         }
 
         return g;
@@ -178,8 +178,7 @@ public class RSTPGraphPanel extends JPanel {
         }
 
         Function<RSTPNode, Point2D> initializer = new HierarchicalPositionFunction(topology, size);
-        StaticLayout<RSTPNode, RSTPLink> layout = new StaticLayout<>(graph, initializer, size);
-        return layout;
+        return new StaticLayout<>(graph, initializer, size);
     }
 
     /**
@@ -222,7 +221,7 @@ public class RSTPGraphPanel extends JPanel {
             double centerY = size.height / 2.0;
             double radius = Math.min(size.width, size.height) / 2.0 - 100;
 
-            // Find root bridge and place it in the center
+            // Find the root bridge and place it in the center
             RSTPNode rootBridge = null;
             List<RSTPNode> otherNodes = new ArrayList<>();
 
@@ -234,7 +233,7 @@ public class RSTPGraphPanel extends JPanel {
                 }
             }
 
-            // Place root bridge in center if found
+            // Place the root bridge in a center if found
             if (rootBridge != null) {
                 positions.put(rootBridge, new Point2D.Double(centerX, centerY));
             }
@@ -245,13 +244,13 @@ public class RSTPGraphPanel extends JPanel {
 
             if (nodeCount == 0) return;
 
-            // Adjust radius if root is in center
+            // Adjust radius if the root is in a center
             if (rootBridge != null) {
                 radius = Math.min(radius, Math.min(size.width, size.height) / 3.0);
             }
 
             for (int i = 0; i < nodeCount; i++) {
-                double angle = 2 * Math.PI * i / nodeCount - Math.PI / 2; // Start from top
+                double angle = 2 * Math.PI * i / nodeCount - Math.PI / 2; // Start from the top
                 double x = centerX + radius * Math.cos(angle);
                 double y = centerY + radius * Math.sin(angle);
                 positions.put(nodesToArrange.get(i), new Point2D.Double(x, y));
@@ -307,8 +306,8 @@ public class RSTPGraphPanel extends JPanel {
         vv.getRenderContext().setEdgeShapeTransformer(EdgeShape.line(graph));
 
         vv.getRenderer().getVertexLabelRenderer().setPosition(Renderer.VertexLabel.Position.CNTR);
-        vv.getRenderContext().setVertexFontTransformer(node -> renderer.getVertexLabelFont());
-        vv.getRenderContext().setEdgeFontTransformer(edge -> renderer.getEdgeLabelFont());
+        vv.getRenderContext().setVertexFontTransformer(_ -> renderer.getVertexLabelFont());
+        vv.getRenderContext().setEdgeFontTransformer(_ -> renderer.getEdgeLabelFont());
 
         PickedState<RSTPNode> pickedState = vv.getPickedVertexState();
         pickedState.addItemListener(e -> {
@@ -378,8 +377,10 @@ public class RSTPGraphPanel extends JPanel {
         Dimension viewSize = vv.getSize();
         Layout<RSTPNode, RSTPLink> layout = vv.getGraphLayout();
 
-        double minX = Double.MAX_VALUE, maxX = Double.MIN_VALUE;
-        double minY = Double.MAX_VALUE, maxY = Double.MIN_VALUE;
+        double minX = Double.MAX_VALUE;
+        double maxX = Double.MIN_VALUE;
+        double minY = Double.MAX_VALUE;
+        double maxY = Double.MIN_VALUE;
 
         for (RSTPNode node : graph.getVertices()) {
             Point2D point = layout.apply(node);

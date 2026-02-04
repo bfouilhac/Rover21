@@ -6,24 +6,7 @@ package com.rover.model.rstp;
  *
  * @author Benjamin FOUILHAC, ADM21 - January/February 2026
  */
-public class RSTPLink {
-
-    private final RSTPNode sourceNode;
-    private final int sourcePort;
-    private final RSTPNode destinationNode;
-    private final int destinationPort;
-
-    public RSTPLink(RSTPNode sourceNode, int sourcePort, RSTPNode destinationNode, int destinationPort) {
-        this.sourceNode = sourceNode;
-        this.sourcePort = sourcePort;
-        this.destinationNode = destinationNode;
-        this.destinationPort = destinationPort;
-    }
-
-    public RSTPNode getSourceNode() { return sourceNode; }
-    public int getSourcePort() { return sourcePort; }
-    public RSTPNode getDestinationNode() { return destinationNode; }
-    public int getDestinationPort() { return destinationPort; }
+public record RSTPLink(RSTPNode sourceNode, int sourcePort, RSTPNode destinationNode, int destinationPort) {
 
     /**
      * Determines if this link is active (forwarding traffic).
@@ -37,18 +20,6 @@ public class RSTPLink {
 
         // Link is active only if both ports are forwarding
         return srcState == RSTPPortState.FORWARDING && dstState == RSTPPortState.FORWARDING;
-    }
-
-    /**
-     * Checks if this link is blocked by RSTP.
-     *
-     * @return true if at least one port is blocking/discarding
-     */
-    public boolean isBlocked() {
-        RSTPPortState srcState = getPortState(sourceNode, sourcePort);
-        RSTPPortState dstState = getPortState(destinationNode, destinationPort);
-
-        return isBlockedState(srcState) || isBlockedState(dstState);
     }
 
     /**
@@ -67,17 +38,6 @@ public class RSTPLink {
 
         // Port not found in RSTP data - assume forwarding (LLDP detected the link)
         return RSTPPortState.FORWARDING;
-    }
-
-    /**
-     * Checks if a port state represents a blocked/non-forwarding state.
-     */
-    private boolean isBlockedState(RSTPPortState state) {
-        return state == RSTPPortState.BLOCKING
-                || state == RSTPPortState.DISCARDING
-                || state == RSTPPortState.DISABLED
-                || state == RSTPPortState.LISTENING
-                || state == RSTPPortState.LEARNING;
     }
 
     /**
@@ -120,12 +80,4 @@ public class RSTPLink {
                 destinationNode.equals(rstpLink.destinationNode);
     }
 
-    @Override
-    public int hashCode() {
-        int result = sourceNode.hashCode();
-        result = 31 * result + sourcePort;
-        result = 31 * result + destinationNode.hashCode();
-        result = 31 * result + destinationPort;
-        return result;
-    }
 }

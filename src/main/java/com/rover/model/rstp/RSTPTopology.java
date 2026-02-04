@@ -61,15 +61,6 @@ public class RSTPTopology {
     }
 
     /**
-     * Returns the identified root bridge node.
-     *
-     * @return the root bridge, or null if not identified
-     */
-    public RSTPNode getRootBridge() {
-        return rootBridge;
-    }
-
-    /**
      * Checks if the topology is valid (has at least one node).
      */
     public boolean isValid() {return !nodes.isEmpty();}

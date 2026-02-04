@@ -3,6 +3,7 @@ package com.rover;
 import com.formdev.flatlaf.FlatLightLaf;
 import com.rover.controller.MainController;
 import com.rover.ui.MainWindow;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,6 +21,11 @@ public class Main {
     private static final Logger logger = LoggerFactory.getLogger(Main.class);
 
     /**
+     * Private constructor
+     */
+    private Main(){}
+
+    /**
      * Main method that starts the Rover21 application.
      * <p>
      * This method initializes the look and feel, then launches the UI on the
@@ -27,9 +33,8 @@ public class Main {
      * required for all Swing component operations.
      * </p>
      *
-     * @param args command line arguments (currently not used)
      */
-    public static void main(String[] args) {
+    static void main() {
         initializeLookAndFeel();
         launchApplication();
     }

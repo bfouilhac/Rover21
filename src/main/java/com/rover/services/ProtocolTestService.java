@@ -130,7 +130,7 @@ public class ProtocolTestService {
             connection.setInstanceFollowRedirects(false);
 
             connection.setSSLSocketFactory(createTrustAllSslContext().getSocketFactory());
-            connection.setHostnameVerifier((hostname, session) -> true);
+            connection.setHostnameVerifier((_, _) -> true);
 
             int responseCode = connection.getResponseCode();
             connection.disconnect();

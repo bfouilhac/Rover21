@@ -89,7 +89,7 @@ public class RSTPSSHService {
      *
      * @param device the device to connect to
      * @return a valid SSHConnection
-     * @throws IOException if connection fails
+     * @throws IOException if the connection fails
      */
     private SSHConnection getOrCreateConnection(PlanetSwitchDevice device) throws IOException {
         String key = device.getIpAddress();
@@ -157,7 +157,7 @@ public class RSTPSSHService {
 
     /**
      * Checks if RSTP/STP is enabled on the device.
-     * Uses a persistent connection that will be reused for subsequent operations.
+     * Uses a persistent connection that will be reused for later operations.
      *
      * @param device the device to check
      * @return true if RSTP/STP is enabled
@@ -202,9 +202,10 @@ public class RSTPSSHService {
         } catch (Exception e) {
             logger.error("Failed to check RSTP status for {}: {}", device.getIpAddress(), e.getMessage());
             closeConnection(device.getIpAddress());
+            Thread.currentThread().interrupt();
             return false;
         }
-        // NOTE: Connection kept open for subsequent operations (getRSTPInfo, getLLDPNeighborInfo)
+        // NOTE: Connection kept open for later operations (getRSTPInfo, getLLDPNeighborInfo)
     }
 
     /**
@@ -266,11 +267,10 @@ public class RSTPSSHService {
      *
      * @param device the device to query
      * @return LLDP neighbor information output
-     * @throws IOException if SSH communication fails
      */
-    public String getLLDPNeighborInfo(PlanetSwitchDevice device) throws IOException {
+    public String getLLDPNeighborInfo(PlanetSwitchDevice device){
         String ip = device.getIpAddress();
-        Object lock = deviceLocks.computeIfAbsent(ip, k -> new Object());
+        Object lock = deviceLocks.computeIfAbsent(ip, _ -> new Object());
 
         synchronized (lock) {
             try {
@@ -292,8 +292,10 @@ public class RSTPSSHService {
                 return response;
 
             } catch (Exception e) {
+                logger.error("LLDP communication error with {}: {}", ip, e.getMessage());
                 closeConnection(ip);
-                throw new IOException("LLDP communication error with " + ip + ": " + e.getMessage(), e);
+                Thread.currentThread().interrupt();
+                return null;
             }
         }
     }
@@ -313,35 +315,6 @@ public class RSTPSSHService {
         logger.info("Command '{}' executed, output length: {} chars", command, result.length());
 
         return result;
-    }
-
-    /**
-     * Executes a MAC address table command and returns the output.
-     *
-     * @param device the device to query
-     * @return the MAC address table output
-     * @throws IOException if SSH fails
-     */
-    public String executeMacTableCommand(PlanetSwitchDevice device) throws IOException {
-        String ip = device.getIpAddress();
-        Object lock = deviceLocks.computeIfAbsent(ip, k -> new Object());
-
-        synchronized (lock) {
-            try {
-                SSHConnection conn = getOrCreateConnection(device);
-                InputStream in = conn.channel().getInputStream();
-                OutputStream out = conn.channel().getOutputStream();
-
-                // Clear any pending data
-                while (in.available() > 0) in.read();
-
-                return executeCommandInSession(in, out, "show mac address-table");
-
-            } catch (Exception e) {
-                closeConnection(ip);
-                throw new IOException("MAC table command error for " + ip + ": " + e.getMessage(), e);
-            }
-        }
     }
 
     /**
@@ -429,7 +402,7 @@ public class RSTPSSHService {
         } else {
             logger.info("RSTP response format 2 detected");
             parseFormat2(output, node);
-            // Detect version from output
+            // Detect a version from output
             if (output.contains("Spanning tree enabled mode RSTP")) {
                 node.setVersion(RSTPVersion.RSTP);
             } else if (output.contains("Spanning tree enabled mode MSTP")) {
@@ -453,7 +426,7 @@ public class RSTPSSHService {
                 String priority = bridgeMatcher.group(1);
                 String mac = bridgeMatcher.group(2).replace("-", ":");
                 node.setBridgeId(priority + "." + mac);
-                logger.debug("Format 1: Bridge ID set to {}", priority + "." + mac);
+                logger.debug("Format 1: Bridge ID set to {}", mac);
             }
 
             Matcher rootMatcher = ROOT_ID_PATTERN.matcher(line);
@@ -461,7 +434,7 @@ public class RSTPSSHService {
                 String priority = rootMatcher.group(1);
                 String mac = rootMatcher.group(2).replace("-", ":");
                 node.setRootBridgeId(priority + "." + mac);
-                logger.debug("Format 1: Root ID set to {}", priority + "." + mac);
+                logger.debug("Format 1: Root ID set to {}", mac);
             }
 
             Matcher rootCostMatcher = ROOT_COST_PATTERN.matcher(line);
@@ -671,15 +644,12 @@ public class RSTPSSHService {
         }
 
         try {
-            String portName = matcher.group(1).trim(); // "gi1"
-            String state = matcher.group(2); // "enabled"/"disabled"
-            String priority = matcher.group(3); // "128"
             String portNum = matcher.group(4); // "1"
             int pathCost = Integer.parseInt(matcher.group(5)); // "20000"
             String stateShort = matcher.group(6); // "Frw"/"Dis"
             String role = matcher.group(7); // "Root"/"Desg"
 
-            // Use the port number from priority.number format
+            // Use the port number from the priority.number format
             int portNumber = Integer.parseInt(portNum);
 
             RSTPPort port = new RSTPPort(portNumber);
@@ -798,7 +768,7 @@ public class RSTPSSHService {
      * Formats a topology change time string to standardized format DD:HH:MM:SS.
      * <p>
      * Supports two input formats:
-     * - Format 1: "0d 00:23:10" (days + time)
+     * - Format 1: "0d 00:23:10" (days and time)
      * - Format 2: "00:23:18" (time only, assumes 0 days)
      * </p>
      *

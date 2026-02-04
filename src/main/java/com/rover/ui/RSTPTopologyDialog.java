@@ -369,9 +369,9 @@ public class RSTPTopologyDialog extends JDialog {
      * </p>
      *
      * @param dialogWidth the current dialog width in pixels
-     * @param ratio       the ratio of component width relative to dialog width (0.0 to 1.0)
-     * @param minWidth    the minimum allowed width in pixels
-     * @param maxWidth    the maximum allowed width in pixels
+     * @param ratio the ratio of component width relative to dialog width (0.0 to 1.0)
+     * @param minWidth the minimum allowed width in pixels
+     * @param maxWidth the maximum allowed width in pixels
      * @return the calculated width, clamped between min and max
      */
     private int calculateResponsiveWidth(int dialogWidth, double ratio, int minWidth, int maxWidth) {
@@ -512,8 +512,8 @@ public class RSTPTopologyDialog extends JDialog {
             @Override
             public void onLinkDiscovered(RSTPLink link) {
                 logger.debug("Link discovered: {} <-> {}",
-                        link.getSourceNode().getDeviceName(),
-                        link.getDestinationNode().getDeviceName());
+                        link.sourceNode().getDeviceName(),
+                        link.destinationNode().getDeviceName());
             }
 
             @Override
@@ -554,6 +554,7 @@ public class RSTPTopologyDialog extends JDialog {
                 } catch (Exception e) {
                     logger.error("Failed to discover topology", e);
                     showError(lang.get("error.topology_discover", e.getMessage()));
+                    Thread.currentThread().interrupt();
                 }
             }
         };

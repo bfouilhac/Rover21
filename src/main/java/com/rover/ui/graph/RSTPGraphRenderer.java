@@ -9,7 +9,7 @@ import java.awt.geom.RoundRectangle2D;
 
 /**
  * Provides visual transformers for JUNG graph rendering.
- * Defines colors, shapes, strokes and labels for RSTP topology visualization.
+ * Defines colors, shapes, strokes, and labels for RSTP topology visualization.
  *
  * @author Benjamin FOUILHAC, ADM21 - February 2026
  */
@@ -117,7 +117,7 @@ public class RSTPGraphRenderer {
 
     /**
      * Creates a function that returns the paint color for edges.
-     * Active links are dark gray, blocked links are red.
+     * Active links are dark-gray, blocked links are red.
      *
      * @return edge paint function
      */
@@ -149,8 +149,8 @@ public class RSTPGraphRenderer {
      */
     public Function<RSTPLink, String> createEdgeLabelTransformer() {
         return link -> String.format("%s:%d - %s:%d",
-                link.getSourceShortName(), link.getSourcePort(),
-                link.getDestinationShortName(), link.getDestinationPort());
+                link.getSourceShortName(), link.sourcePort(),
+                link.getDestinationShortName(), link.destinationPort());
     }
 
     /**

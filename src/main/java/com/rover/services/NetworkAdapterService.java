@@ -116,10 +116,9 @@ public class NetworkAdapterService {
      * </p>
      *
      * @param networkInterface the network interface to process
-     * @param adapters         the list to add valid adapters to
+     * @param adapters the list to add valid adapters to
      */
-    private void processInterfaceAddresses(NetworkInterface networkInterface,
-                                           List<NetworkInterfaceCustom> adapters) {
+    private void processInterfaceAddresses(NetworkInterface networkInterface, List<NetworkInterfaceCustom> adapters) {
         Enumeration<InetAddress> inetAddresses = networkInterface.getInetAddresses();
 
         while (inetAddresses.hasMoreElements()) {

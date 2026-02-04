@@ -37,16 +37,6 @@ public class LinkDiscoveryService {
     }
 
     /**
-     * Discovers links between nodes using LLDP, with parallel execution.
-     *
-     * @param nodes the list of nodes to query
-     * @return list of discovered links (deduplicated)
-     */
-    public List<RSTPLink> discoverLinks(List<RSTPNode> nodes) {
-        return discoverLinks(nodes, null);
-    }
-
-    /**
      * Discovers links between nodes using LLDP, with parallel execution and progress callback.
      *
      * @param nodes the list of nodes to query
@@ -125,7 +115,7 @@ public class LinkDiscoveryService {
     }
 
     /**
-     * Builds a MAC address to node lookup map.
+     * Builds a MAC address to a node lookup map.
      */
     private Map<String, RSTPNode> buildMacMap(List<RSTPNode> nodes) {
         Map<String, RSTPNode> macMap = new HashMap<>();
@@ -189,10 +179,10 @@ public class LinkDiscoveryService {
      * The key is symmetric: A-B and B-A produce the same key.
      */
     private String createLinkKey(RSTPLink link) {
-        String m1 = link.getSourceNode().getDevice().getMacAddress();
-        String m2 = link.getDestinationNode().getDevice().getMacAddress();
-        int p1 = link.getSourcePort();
-        int p2 = link.getDestinationPort();
+        String m1 = link.sourceNode().getDevice().getMacAddress();
+        String m2 = link.destinationNode().getDevice().getMacAddress();
+        int p1 = link.sourcePort();
+        int p2 = link.destinationPort();
 
         return (m1.compareTo(m2) < 0)
                 ? m1 + p1 + m2 + p2

@@ -34,7 +34,6 @@ public class RSTPDetailsPanel extends JPanel {
     private JLabel rootCostValue;
     private JLabel hopCountValue;
     private JLabel stpVersionValue;
-    private JTable portsTable;
     private DefaultTableModel portsTableModel;
 
     public RSTPDetailsPanel() {
@@ -131,7 +130,7 @@ public class RSTPDetailsPanel extends JPanel {
             }
         };
 
-        portsTable = new JTable(portsTableModel);
+        JTable portsTable = new JTable(portsTableModel);
         portsTable.setFont(FONT_LABEL);
         portsTable.setRowHeight(24);
         portsTable.getTableHeader().setFont(FONT_LABEL);
@@ -139,7 +138,7 @@ public class RSTPDetailsPanel extends JPanel {
         portsTable.setGridColor(COLOR_BORDER);
 
         DefaultTableCellRenderer centerRenderer = new DefaultTableCellRenderer();
-        centerRenderer.setHorizontalAlignment(JLabel.CENTER);
+        centerRenderer.setHorizontalAlignment(SwingConstants.CENTER);
         for (int i = 0; i < portsTable.getColumnCount(); i++) {
             portsTable.getColumnModel().getColumn(i).setCellRenderer(centerRenderer);
         }
@@ -200,7 +199,7 @@ public class RSTPDetailsPanel extends JPanel {
     }
 
     /**
-     * Shows empty state when no node is selected.
+     * Shows an empty state when no node is selected.
      */
     public void showEmptyState() {
         deviceNameValue.setText(lang.get("topology.details_select_node"));

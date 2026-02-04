@@ -77,7 +77,6 @@ public class MainController implements MainWindow.UIEventListener {
      * </p>
      *
      * @see #loadNetworkAdapters()
-     * @see com.rover.Main#main(String[])
      */
     public void initialize() {
         logger.info("Initializing application...");
