@@ -3,13 +3,16 @@ package com.rover.ui.graph;
 import com.google.common.base.Function;
 import com.rover.model.rstp.RSTPLink;
 import com.rover.model.rstp.RSTPNode;
+import edu.uci.ics.jung.algorithms.layout.Layout;
 
 import java.awt.*;
+import java.awt.geom.Point2D;
 import java.awt.geom.RoundRectangle2D;
 
 /**
  * Provides visual transformers for JUNG graph rendering.
  * Defines colors, shapes, strokes, and labels for RSTP topology visualization.
+ * Edge labels dynamically adjust based on node positions for visual consistency.
  *
  * @author Benjamin FOUILHAC, ADM21 - February 2026
  */
@@ -18,15 +21,16 @@ public class RSTPGraphRenderer {
     private static final Color COLOR_ROOT_BRIDGE = new Color(204, 255, 153);
     private static final Color COLOR_SWITCH = new Color(153, 204, 255);
     private static final Color COLOR_EDGE_ACTIVE = new Color(66, 66, 66);
-    private static final Color COLOR_EDGE_BLOCKED = new Color(220, 53, 69);  // Red for blocked links
+    private static final Color COLOR_EDGE_BLOCKED = new Color(220, 53, 69);
     private static final Color COLOR_VERTEX_BORDER = new Color(33, 33, 33);
 
-    // Node sizes increased to accommodate two lines of text
     private static final int NODE_WIDTH = 120;
     private static final int NODE_HEIGHT = 50;
     private static final int ROOT_NODE_WIDTH = 140;
     private static final int ROOT_NODE_HEIGHT = 60;
     private static final int ARC_SIZE = 14;
+
+    private Layout<RSTPNode, RSTPLink> layout;
 
     /**
      * Creates a function that returns the fill color for vertices.
@@ -142,15 +146,83 @@ public class RSTPGraphRenderer {
     }
 
     /**
+     * Sets the layout used for position-aware edge labels.
+     * Must be called before creating the edge label transformer.
+     *
+     * @param layout the graph layout
+     */
+    public void setLayout(Layout<RSTPNode, RSTPLink> layout) {
+        this.layout = layout;
+    }
+
+    /**
      * Creates a function that returns the label text for edges.
-     * Shows "DeviceName:port — DeviceName:port" format so ports stay attached to their devices.
+     * The label shows port numbers ordered by visual position:
+     * left port first, right port second (or top/bottom for vertical edges).
+     * This ensures the label always matches the visual representation.
      *
      * @return edge label function
      */
     public Function<RSTPLink, String> createEdgeLabelTransformer() {
-        return link -> String.format("%s:%d - %s:%d",
-                link.getSourceShortName(), link.sourcePort(),
-                link.getDestinationShortName(), link.destinationPort());
+        return link -> {
+            int srcPort = link.sourcePort();
+            int dstPort = link.destinationPort();
+
+            if (layout == null) {
+                // Fallback: consistent ordering by node name
+                String srcName = link.sourceNode().getDeviceName();
+                String dstName = link.destinationNode().getDeviceName();
+                if (srcName != null && dstName != null && srcName.compareTo(dstName) > 0) {
+                    return String.format("%d - %d", dstPort, srcPort);
+                }
+                return String.format("%d - %d", srcPort, dstPort);
+            }
+
+            // Get current positions from layout
+            Point2D srcPos = layout.apply(link.sourceNode());
+            Point2D dstPos = layout.apply(link.destinationNode());
+
+            // Determine visual order based on position
+            boolean srcIsFirst = determineVisualOrder(srcPos, dstPos);
+
+            if (srcIsFirst) {
+                return String.format("%d - %d", srcPort, dstPort);
+            } else {
+                return String.format("%d - %d", dstPort, srcPort);
+            }
+        };
+    }
+
+    /**
+     * Determines which node should appear first in the label based on visual position.
+     * Uses angle-based calculation for smooth transitions without gaps.
+     * <p>
+     * The label reads left-to-right, so the "first" port is the one on the left.
+     * For vertical edges, "first" is the one on top.
+     * </p>
+     *
+     * @param srcPos position of source node
+     * @param dstPos position of destination node
+     * @return true if a source should appear first (left or top), false otherwise
+     */
+    private boolean determineVisualOrder(Point2D srcPos, Point2D dstPos) {
+        double dx = dstPos.getX() - srcPos.getX();
+        double dy = dstPos.getY() - srcPos.getY();
+
+        // Handle case where nodes are at the exact same position
+        if (Math.abs(dx) < 1 && Math.abs(dy) < 1) {
+            return true;
+        }
+
+        // Calculate an angle from source to destination
+        // atan2 returns an angle in radians: -PI to +PI
+        // 0 = right, PI/2 = down, PI/-PI = left, -PI/2 = up
+        double angle = Math.atan2(dy, dx);
+
+        // If the vector points to the right half (angle between -PI/2 and +PI/2),
+        // then a source is on the left side -> a source comes first. 
+        // Otherwise, destination is on the left -> destination comes first
+        return angle > -Math.PI / 2 && angle <= Math.PI / 2;
     }
 
     /**

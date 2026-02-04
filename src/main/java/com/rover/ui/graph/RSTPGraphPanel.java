@@ -147,6 +147,9 @@ public class RSTPGraphPanel extends JPanel {
         graph = buildGraph(topology);
         Layout<RSTPNode, RSTPLink> layout = createHierarchicalLayout(graph, topology);
 
+        // Pass layout to renderer for position-aware edge labels
+        renderer.setLayout(layout);
+
         vv = new VisualizationViewer<>(layout);
         configureVisualization();
         setupMouseHandlers();
