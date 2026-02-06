@@ -10,20 +10,35 @@ public record RSTPLink(RSTPNode sourceNode, int sourcePort, RSTPNode destination
 
     /**
      * Determines if this link is active (forwarding traffic).
-     * A link is considered blocked if either port is in a non-forwarding state.
+     * A link is considered active only if both ports are in the FORWARDING state.
      *
-     * @return true if both ports are forwarding, false if blocked
+     * @return true if both ports are forwarding, false otherwise
      */
     public boolean isActive() {
         RSTPPortState srcState = getPortState(sourceNode, sourcePort);
         RSTPPortState dstState = getPortState(destinationNode, destinationPort);
 
-        // Link is active only if both ports are forwarding
         return srcState == RSTPPortState.FORWARDING && dstState == RSTPPortState.FORWARDING;
     }
 
     /**
+     * Determines if this link has an unknown state (stale LLDP data).
+     * This occurs when the port is not found in RSTP data, typically after
+     * a cable is disconnected, but the LLDP cache still holds the entry.
+     *
+     * @return true if at least one port state is unknown, false otherwise
+     */
+    public boolean isUnknown() {
+        RSTPPortState srcState = getPortState(sourceNode, sourcePort);
+        RSTPPortState dstState = getPortState(destinationNode, destinationPort);
+
+        return srcState == RSTPPortState.UNKNOWN || dstState == RSTPPortState.UNKNOWN;
+    }
+
+    /**
      * Gets the port state for a specific port on a node.
+     * Returns UNKNOWN if the port is not found, which causes the link to be
+     * displayed as blocked (conservative approach for stale LLDP data).
      */
     private RSTPPortState getPortState(RSTPNode node, int portNumber) {
         if (node == null || node.getPorts() == null) {
@@ -36,30 +51,8 @@ public record RSTPLink(RSTPNode sourceNode, int sourcePort, RSTPNode destination
             }
         }
 
-        // Port not found in RSTP data - assume forwarding (LLDP detected the link)
-        return RSTPPortState.FORWARDING;
-    }
-
-    /**
-     * Gets a short name for the source node (for display).
-     */
-    public String getSourceShortName() {
-        return getShortName(sourceNode);
-    }
-
-    /**
-     * Gets a short name for the destination node (for display).
-     */
-    public String getDestinationShortName() {
-        return getShortName(destinationNode);
-    }
-
-    private String getShortName(RSTPNode node) {
-        if (node == null) return "?";
-        String name = node.getDeviceName();
-        if (name == null || name.isEmpty()) return "?";
-        // Return first 8 chars max
-        return name.length() > 8 ? name.substring(0, 8) : name;
+        // Port isn't found in RSTP data - return UNKNOWN to display a link as blocked
+        return RSTPPortState.UNKNOWN;
     }
 
     @Override

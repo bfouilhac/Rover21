@@ -22,6 +22,7 @@ public class RSTPGraphRenderer {
     private static final Color COLOR_SWITCH = new Color(153, 204, 255);
     private static final Color COLOR_EDGE_ACTIVE = new Color(66, 66, 66);
     private static final Color COLOR_EDGE_BLOCKED = new Color(66, 66, 66);
+    private static final Color COLOR_EDGE_UNKNOWN = new Color(200, 60, 60); // Red for stale LLDP data
     private static final Color COLOR_VERTEX_BORDER = new Color(33, 33, 33);
 
     // Default node sizes (for small networks)
@@ -183,27 +184,42 @@ public class RSTPGraphRenderer {
 
     /**
      * Creates a function that returns the paint color for edges.
-     * Active links are dark-gray, blocked links are red.
+     * <p>
+     * Colors:
+     * - Active links: dark gray
+     * - RSTP blocked links: dark gray (differentiated by stroke style)
+     * - Unknown state links (stale LLDP): red
+     * </p>
      *
      * @return edge paint function
      */
     public Function<RSTPLink, Paint> createEdgePaintTransformer() {
-        return link -> link.isActive() ? COLOR_EDGE_ACTIVE : COLOR_EDGE_BLOCKED;
+        return link -> {
+            if (link.isUnknown()) {
+                return COLOR_EDGE_UNKNOWN;
+            }
+            return link.isActive() ? COLOR_EDGE_ACTIVE : COLOR_EDGE_BLOCKED;
+        };
     }
 
     /**
      * Creates a function that returns the stroke style for edges.
-     * Active links are solid, blocked links are dashed.
+     * <p>
+     * Styles:
+     * - Active links: solid line
+     * - RSTP blocked links: dashed line
+     * - Unknown state links (stale LLDP): solid line (color indicates the issue)
+     * </p>
      *
      * @return edge stroke function
      */
     public Function<RSTPLink, Stroke> createEdgeStrokeTransformer() {
         return link -> {
-            if (link.isActive()) {
+            if (link.isActive() || link.isUnknown()) {
                 return new BasicStroke(2.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND);
-            } else {
-                return new BasicStroke(2.0f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10.0f, new float[]{6.0f, 4.0f}, 0.0f);
             }
+            // RSTP blocked: dashed line
+            return new BasicStroke(2.0f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10.0f, new float[]{6.0f, 4.0f}, 0.0f);
         };
     }
 

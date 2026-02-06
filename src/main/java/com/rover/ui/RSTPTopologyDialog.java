@@ -655,6 +655,7 @@ public class RSTPTopologyDialog extends JDialog {
 
     /**
      * Refreshes both table and graph views by rediscovering topology.
+     * Closes all SSH connections first to ensure fresh data from switches.
      */
     private void refresh() {
         if (topology == null || topology.getNodes().isEmpty()) {
@@ -664,6 +665,9 @@ public class RSTPTopologyDialog extends JDialog {
         List<PlanetSwitchDevice> devices = topology.getNodes().stream()
                 .map(RSTPNode::getDevice)
                 .toList();
+
+        // Close all SSH connections to force fresh queries
+        discoveryService.shutdown();
 
         // Reset graph panel to show the loading state
         if (graphPanel != null) {
