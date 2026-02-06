@@ -71,7 +71,8 @@ public class RSTPSSHService {
     private static final Pattern ROOT_PRIORITY_PATTERN = Pattern.compile("Root ID\\s+Priority\\s+(\\d+)");
     private static final Pattern ROOT_COST_ALT_PATTERN = Pattern.compile("Cost\\s+(\\d+)");
     private static final Pattern TOPOLOGY_CHANGE_PATTERN = Pattern.compile("last change occurred\\s+(.+?)\\s+ago");
-    private static final Pattern PORT_LINE_ALT_PATTERN = Pattern.compile("^\\s*(gi\\d+)\\s+(\\w+)\\s+(\\d+)\\.(\\d+)\\s+(\\d+)\\s+(\\w+)\\s+(\\w+).*");
+    // Supports gi1, fa1, ge1, te1, etc. and also formats like "Gi 1/0/1"
+    private static final Pattern PORT_LINE_ALT_PATTERN = Pattern.compile("^\\s*([a-zA-Z]+\\d+(?:/\\d+)*)\\s+(\\w+)\\s+(\\d+)\\.(\\d+)\\s+(\\d+)\\s+(\\w+)\\s+(\\w+).*");
 
     // Thread-safe map for persistent SSH connections (key = IP address)
     private final Map<String, SSHConnection> connections = new ConcurrentHashMap<>();
@@ -302,6 +303,7 @@ public class RSTPSSHService {
 
     /**
      * Executes a command in an already established SSH session.
+     * Handles paginated output by detecting "--More--" and sending newlines to continue.
      */
     private String executeCommandInSession(InputStream in, OutputStream out, String command) throws IOException, InterruptedException {
 
@@ -309,7 +311,7 @@ public class RSTPSSHService {
         Thread.sleep(AFTER_COMMAND_WAIT_MS);
 
         StringBuilder output = new StringBuilder();
-        readCommandOutput(in, output);
+        readCommandOutputWithPagination(in, out, output);
 
         String result = cleanOutput(output.toString(), command);
         logger.info("Command '{}' executed, output length: {} chars", command, result.length());
@@ -318,26 +320,33 @@ public class RSTPSSHService {
     }
 
     /**
-     * Reads command output from the stream.
-     * Stops as soon as no more data is available (non-blocking).
+     * Reads command output with pagination support.
+     * Detects "--More--" prompts and sends newlines to retrieve the full output.
      */
-    private void readCommandOutput(InputStream in, StringBuilder output) throws IOException, InterruptedException {
+    private void readCommandOutputWithPagination(InputStream in, OutputStream out, StringBuilder output) throws IOException, InterruptedException {
 
         long lastReadTime = System.currentTimeMillis();
         int consecutiveEmptyReads = 0;
-        int maxEmptyReads = 15; // Reduced from 30
+        int maxEmptyReads = 15;
 
         while (true) {
             if (in.available() > 0) {
                 byte[] buffer = new byte[READ_BUFFER_SIZE];
                 int bytesRead = in.read(buffer);
                 if (bytesRead > 0) {
-                    output.append(new String(buffer, 0, bytesRead));
+                    String chunk = new String(buffer, 0, bytesRead);
+                    output.append(chunk);
                     lastReadTime = System.currentTimeMillis();
                     consecutiveEmptyReads = 0;
+
+                    // Check for pagination prompt and send a newline to continue
+                    if (chunk.contains("--More--")) {
+                        logger.debug("Detected --More-- prompt, sending newline to continue");
+                        sendLine(out, "");
+                        Thread.sleep(PROMPT_WAIT_MS);
+                    }
                 }
             } else {
-                // Check if we've waited long enough without data
                 long timeSinceLastRead = System.currentTimeMillis() - lastReadTime;
 
                 if (timeSinceLastRead > NO_DATA_TIMEOUT_MS) {
@@ -351,16 +360,21 @@ public class RSTPSSHService {
                     break;
                 }
 
-                Thread.sleep(50); // Reduced from 100ms
+                Thread.sleep(50);
             }
         }
     }
 
     /**
-     * Cleans SSH output by removing command echo and prompts.
+     * Cleans SSH output by removing command echo, prompts, and pagination markers.
      */
     private String cleanOutput(String output, String command) {
-        String[] lines = output.split("\r?\n");
+        // Remove --More-- pagination markers and associated escape sequences
+        String cleaned = output.replace("--More--", "")
+                .replaceAll("\\x1B\\[[0-9;]*[a-zA-Z]", "") // Remove ANSI escape codes
+                .replaceAll("\\x08+\\s*\\x08*", ""); // Remove backspace sequences
+
+        String[] lines = cleaned.split("\r?\n");
         StringBuilder result = new StringBuilder();
         boolean capturing = false;
 
@@ -379,6 +393,11 @@ public class RSTPSSHService {
             // Stop at prompt
             if (trimmed.matches("^[a-zA-Z0-9_-]+[>#]$")) {
                 break;
+            }
+
+            // Skip empty lines that may result from pagination cleanup
+            if (trimmed.isEmpty() && result.isEmpty() && result.toString().endsWith("\n\n")) {
+                continue;
             }
 
             result.append(line).append("\n");
@@ -634,22 +653,24 @@ public class RSTPSSHService {
     }
 
     /**
-     * Parses a single port line from Format 2 output
+     * Parses a single port line from Format 2 output.
      * Format: "     gi1  enabled   128.1     20000   Frw   Desg       No P2P (RSTP)"
+     *         "     gi1  enabled   128.1     20000   Blk   Altn       No P2P (RSTP)"
      */
     private RSTPPort parsePortLineFormat2(String line) {
         Matcher matcher = PORT_LINE_ALT_PATTERN.matcher(line.trim());
         if (!matcher.matches()) {
+            logger.info("Failed to parse port line: {}", line);
             return null;
         }
 
         try {
-            String portNum = matcher.group(4); // "1"
+            String portName = matcher.group(1); // "gi1"
+            String portNum = matcher.group(4); // "1" from "128.1"
             int pathCost = Integer.parseInt(matcher.group(5)); // "20000"
-            String stateShort = matcher.group(6); // "Frw"/"Dis"
-            String role = matcher.group(7); // "Root"/"Desg"
+            String stateShort = matcher.group(6); // "Frw"/"Blk"
+            String role = matcher.group(7); // "Root"/"Desg"/"Altn"
 
-            // Use the port number from the priority.number format
             int portNumber = Integer.parseInt(portNum);
 
             RSTPPort port = new RSTPPort(portNumber);
@@ -657,8 +678,8 @@ public class RSTPSSHService {
             port.setState(mapStateShort(stateShort));
             port.setRole(mapRoleShort(role));
 
+            logger.info("Parsed port {}: number={}, state={}, role={}", portName, portNumber, port.getState(), port.getRole());
             return port;
-
         } catch (Exception e) {
             logger.warn("Failed to parse Format 2 port line: {}", line, e);
             return null;

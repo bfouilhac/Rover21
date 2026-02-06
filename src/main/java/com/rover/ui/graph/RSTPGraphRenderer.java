@@ -21,16 +21,60 @@ public class RSTPGraphRenderer {
     private static final Color COLOR_ROOT_BRIDGE = new Color(204, 255, 153);
     private static final Color COLOR_SWITCH = new Color(153, 204, 255);
     private static final Color COLOR_EDGE_ACTIVE = new Color(66, 66, 66);
-    private static final Color COLOR_EDGE_BLOCKED = new Color(220, 53, 69);
+    private static final Color COLOR_EDGE_BLOCKED = new Color(66, 66, 66);
     private static final Color COLOR_VERTEX_BORDER = new Color(33, 33, 33);
 
-    private static final int NODE_WIDTH = 120;
-    private static final int NODE_HEIGHT = 50;
-    private static final int ROOT_NODE_WIDTH = 140;
-    private static final int ROOT_NODE_HEIGHT = 60;
+    // Default node sizes (for small networks)
+    private static final int DEFAULT_NODE_WIDTH = 120;
+    private static final int DEFAULT_NODE_HEIGHT = 50;
+    private static final int MIN_NODE_WIDTH = 60;
+    private static final int MIN_NODE_HEIGHT = 30;
     private static final int ARC_SIZE = 14;
 
     private Layout<RSTPNode, RSTPLink> layout;
+    private int nodeCount = 1;
+    private Dimension viewSize = new Dimension(800, 600);
+
+    /**
+     * Sets graph metrics for adaptive node sizing.
+     *
+     * @param nodeCount number of nodes in the graph
+     * @param viewSize  size of the visualization area
+     */
+    public void setGraphMetrics(int nodeCount, Dimension viewSize) {
+        this.nodeCount = Math.max(1, nodeCount);
+        this.viewSize = viewSize != null ? viewSize : new Dimension(800, 600);
+    }
+
+    /**
+     * Calculates the optimal node width based on graph size.
+     */
+    private int calculateNodeWidth() {
+        if (nodeCount <= 5) {
+            return DEFAULT_NODE_WIDTH;
+        }
+
+        // Calculate based on available space and node count
+        double availableWidth = viewSize.width * 0.8;
+        int optimalWidth = (int) (availableWidth / Math.sqrt(nodeCount) / 1.5);
+
+        // Clamp between min and default
+        return Math.max(MIN_NODE_WIDTH, Math.min(DEFAULT_NODE_WIDTH, optimalWidth));
+    }
+
+    /**
+     * Calculates the optimal node height based on graph size.
+     */
+    private int calculateNodeHeight() {
+        if (nodeCount <= 5) {
+            return DEFAULT_NODE_HEIGHT;
+        }
+
+        double availableHeight = viewSize.height * 0.8;
+        int optimalHeight = (int) (availableHeight / Math.sqrt(nodeCount) / 1.5);
+
+        return Math.max(MIN_NODE_HEIGHT, Math.min(DEFAULT_NODE_HEIGHT, optimalHeight));
+    }
 
     /**
      * Creates a function that returns the fill color for vertices.
@@ -44,25 +88,34 @@ public class RSTPGraphRenderer {
 
     /**
      * Creates a function that returns the shape for vertices.
+     * Size is adaptive based on node count and view size.
      * Root bridge is slightly larger than regular switches.
      *
      * @return vertex shape function
      */
     public Function<RSTPNode, Shape> createVertexShapeTransformer() {
         return node -> {
-            int width = node.isRootBridge() ? ROOT_NODE_WIDTH : NODE_WIDTH;
-            int height = node.isRootBridge() ? ROOT_NODE_HEIGHT : NODE_HEIGHT;
+            int baseWidth = calculateNodeWidth();
+            int baseHeight = calculateNodeHeight();
+
+            // Root bridge is 20% larger
+            int width = node.isRootBridge() ? (int) (baseWidth * 1.2) : baseWidth;
+            int height = node.isRootBridge() ? (int) (baseHeight * 1.2) : baseHeight;
+
+            int arcSize = Math.min(ARC_SIZE, Math.min(width, height) / 4);
+
             return new RoundRectangle2D.Double(
                     -width / 2.0, -height / 2.0,
                     width, height,
-                    ARC_SIZE, ARC_SIZE
+                    arcSize, arcSize
             );
         };
     }
 
     /**
      * Creates a function that returns the label text for vertices.
-     * Shows device name and system location on two lines using HTML.
+     * Shows device name and optionally system location.
+     * Text length adapts to node size.
      *
      * @return vertex label function
      */
@@ -71,17 +124,26 @@ public class RSTPGraphRenderer {
             String name = node.getDeviceName();
             String location = node.getDevice().getSystemLocation();
 
+            // Calculate max length based on node width
+            int nodeWidth = calculateNodeWidth();
+            int maxLength = Math.max(8, nodeWidth / 8);
+
             // Truncate name if too long
-            if (name != null && name.length() > 16) {
-                name = name.substring(0, 14) + "...";
+            if (name != null && name.length() > maxLength) {
+                name = name.substring(0, maxLength - 2) + "..";
             }
             if (name == null || name.isEmpty()) {
-                name = "Unknown";
+                name = "?";
+            }
+
+            // For small nodes, only show name
+            if (nodeWidth < 80) {
+                return String.format("<html><center>%s</center></html>", name);
             }
 
             // Truncate location if too long
-            if (location != null && location.length() > 16) {
-                location = location.substring(0, 14) + "...";
+            if (location != null && location.length() > maxLength) {
+                location = location.substring(0, maxLength - 2) + "..";
             }
 
             // Build HTML label with two lines

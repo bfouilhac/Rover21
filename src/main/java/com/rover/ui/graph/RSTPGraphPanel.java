@@ -49,9 +49,11 @@ public class RSTPGraphPanel extends JPanel {
     private transient RSTPTopology topology;
     private transient Graph<RSTPNode, RSTPLink> graph;
     private transient VisualizationViewer<RSTPNode, RSTPLink> vv;
+    private transient DefaultModalGraphMouse<RSTPNode, RSTPLink> graphMouse;
     private JPanel graphContainer;
     private RSTPDetailsPanel detailsPanel;
     private JLabel emptyStateLabel;
+    private JToggleButton panModeButton;
 
     public RSTPGraphPanel() {
         initComponents();
@@ -95,10 +97,21 @@ public class RSTPGraphPanel extends JPanel {
         JButton fitButton = createToolbarButton(lang.get("topology.control_fit"), _ -> fitToWindow());
         JButton resetButton = createToolbarButton(lang.get("topology.control_reset"), _ -> resetLayout());
 
+        // Pan mode toggle button
+        panModeButton = new JToggleButton(lang.get("topology.control_pan"));
+        panModeButton.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        panModeButton.setFocusPainted(false);
+        panModeButton.setToolTipText(lang.get("topology.control_pan_tooltip"));
+        panModeButton.addActionListener(_ -> togglePanMode());
+
         toolbar.add(Box.createHorizontalStrut(8));
         toolbar.add(zoomInButton);
         toolbar.add(Box.createHorizontalStrut(4));
         toolbar.add(zoomOutButton);
+        toolbar.add(Box.createHorizontalStrut(12));
+        toolbar.addSeparator();
+        toolbar.add(Box.createHorizontalStrut(12));
+        toolbar.add(panModeButton);
         toolbar.add(Box.createHorizontalStrut(12));
         toolbar.addSeparator();
         toolbar.add(Box.createHorizontalStrut(12));
@@ -108,6 +121,19 @@ public class RSTPGraphPanel extends JPanel {
         toolbar.add(Box.createHorizontalGlue());
 
         return toolbar;
+    }
+
+    /**
+     * Toggles between picking mode (move individual nodes) and pan mode (move entire view).
+     */
+    private void togglePanMode() {
+        if (graphMouse == null) return;
+
+        if (panModeButton.isSelected()) {
+            graphMouse.setMode(ModalGraphMouse.Mode.TRANSFORMING);
+        } else {
+            graphMouse.setMode(ModalGraphMouse.Mode.PICKING);
+        }
     }
 
     private JButton createToolbarButton(String text, java.awt.event.ActionListener listener) {
@@ -145,9 +171,16 @@ public class RSTPGraphPanel extends JPanel {
 
     private void buildAndDisplayGraph() {
         graph = buildGraph(topology);
+
+        Dimension viewSize = graphContainer.getSize();
+        if (viewSize.width == 0 || viewSize.height == 0) {
+            viewSize = new Dimension(800, 600);
+        }
+
         Layout<RSTPNode, RSTPLink> layout = createHierarchicalLayout(graph, topology);
 
-        // Pass layout to renderer for position-aware edge labels
+        // Pass metrics to renderer for adaptive sizing and position-aware labels
+        renderer.setGraphMetrics(topology.getNodeCount(), viewSize);
         renderer.setLayout(layout);
 
         vv = new VisualizationViewer<>(layout);
@@ -324,9 +357,10 @@ public class RSTPGraphPanel extends JPanel {
     }
 
     private void setupMouseHandlers() {
-        DefaultModalGraphMouse<RSTPNode, RSTPLink> graphMouse = new DefaultModalGraphMouse<>();
+        graphMouse = new DefaultModalGraphMouse<>();
         graphMouse.setMode(ModalGraphMouse.Mode.PICKING);
         vv.setGraphMouse(graphMouse);
+        panModeButton.setSelected(false); // Reset pan mode button state
 
         vv.addMouseListener(new MouseAdapter() {
             @Override
