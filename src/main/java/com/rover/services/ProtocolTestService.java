@@ -8,10 +8,6 @@ import com.rover.utils.SSHConnectionManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.net.ssl.HttpsURLConnection;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -91,55 +87,19 @@ public class ProtocolTestService {
      * Checks if HTTP is available on the device.
      */
     public boolean isHttpAvailable(String ipAddress) {
-        if (!isPortOpen(ipAddress, HTTP_PORT)) {
-            return false;
-        }
-
-        try {
-            URL url = new URI("http://" + ipAddress).toURL();
-            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
-            connection.setConnectTimeout(HTTP_TIMEOUT);
-            connection.setReadTimeout(HTTP_TIMEOUT);
-            connection.setRequestMethod("HEAD");
-            connection.setInstanceFollowRedirects(false);
-
-            int responseCode = connection.getResponseCode();
-            connection.disconnect();
-
-            return responseCode > 0;
-
-        } catch (IOException e) {
-            logger.error("HTTP connection failed for {}: {}", ipAddress, e.getMessage());
-            return false;
-        } catch (URISyntaxException e) {
-            logger.error("Invalid IP address syntax: {}", ipAddress);
-            return false;
-        }
+        return isPortOpen(ipAddress, HTTP_PORT);
     }
 
     /**
      * Checks if HTTPS is available on the device.
+     * <p>
+     * Uses a simple port check (443) to verify HTTPS availability.
+     * This approach avoids SSL certificate validation issues with self-signed
+     * certificates while maintaining security (no TrustManager bypass needed).
+     * </p>
      */
     public boolean isHttpsAvailable(String ipAddress) {
-        try {
-            URL url = new URI("https://" + ipAddress).toURL();
-            HttpsURLConnection connection = (HttpsURLConnection) url.openConnection();
-            connection.setConnectTimeout(HTTP_TIMEOUT);
-            connection.setReadTimeout(HTTP_TIMEOUT);
-            connection.setRequestMethod("HEAD");
-            connection.setInstanceFollowRedirects(false);
-
-            connection.setSSLSocketFactory(createTrustAllSslContext().getSocketFactory());
-            connection.setHostnameVerifier((_, _) -> true);
-
-            int responseCode = connection.getResponseCode();
-            connection.disconnect();
-
-            return responseCode >= 200 && responseCode < 300;
-
-        } catch (Exception e) {
-            return false;
-        }
+        return isPortOpen(ipAddress, 443);
     }
 
     private boolean isLocalPrivateNetwork(String ipAddress) {
@@ -406,40 +366,6 @@ public class ProtocolTestService {
         }
 
         return DEFAULT_PASSWORD;
-    }
-
-    /**
-     * Creates an SSL context that trusts all certificates.
-     * <p>
-     * WARNING: This disables SSL certificate validation.
-     * This is required because PLANET switches use self-signed certificates (IStaX-Selfsigned).
-     * This should only be used on trusted private networks.
-     * </p>
-     *
-     * @return SSLContext configured to accept self-signed certificates
-     * @throws Exception if SSL context creation fails
-     */
-    @SuppressWarnings("java:S4830") // Intentionally trusting all certificates - switches use self-signed certs
-    private SSLContext createTrustAllSslContext() throws Exception {
-        TrustManager[] trustAllCerts = new TrustManager[]{
-                new X509TrustManager() {
-                    public java.security.cert.X509Certificate[] getAcceptedIssuers() {
-                         return new java.security.cert.X509Certificate[]{};
-                    }
-
-                    public void checkClientTrusted(java.security.cert.X509Certificate[] certs, String authType) {
-                        // No need of implementation on this one
-                    }
-
-                    public void checkServerTrusted(java.security.cert.X509Certificate[] certs, String authType) {
-                        // No need of implementation on this one
-                    }
-                }
-        };
-
-        SSLContext sc = SSLContext.getInstance("TLS");
-        sc.init(null, trustAllCerts, new java.security.SecureRandom());
-        return sc;
     }
 
     private boolean isPrintableOrWhitespace(char c) {
