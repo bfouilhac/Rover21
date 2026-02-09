@@ -35,7 +35,6 @@ public class ProtocolTestService {
 
     private static final int PORT_CHECK_TIMEOUT = 1000;
     private static final int TELNET_TIMEOUT = 1500;
-    private static final int HTTP_TIMEOUT = 500;
     private static final int HTTP_PORT = 80;
 
     private static final String DEFAULT_USERNAME = "admin";
