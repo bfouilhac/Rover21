@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.*;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -76,9 +77,7 @@ public class ProtocolTestService {
         result.setHttpsAvailable(isHttpsAvailable(ipAddress));
 
         long elapsed = System.currentTimeMillis() - startTime;
-        logger.info("Protocol tests for {} completed in {}ms (security: {})",
-                ipAddress, elapsed, result.getSecurityStatus());
-
+        logger.info("Protocol tests for {} completed in {}ms (security: {})", ipAddress, elapsed, result.getSecurityStatus());
         return result;
     }
 
@@ -144,47 +143,20 @@ public class ProtocolTestService {
             return new SecurityTestResult(false, true);
         }
 
-        List<String> customAccounts = PreferencesManager.getCustomAccountMap();
-
-        if (!customAccounts.isEmpty()) {
-            return testTelnetWithCustomCredentials(ipAddress, telnetPort, customAccounts);
-        } else {
-            return testTelnetWithDefaultCredentials(ipAddress, telnetPort, macAddress);
-        }
-    }
-
-    private SecurityTestResult testTelnetWithCustomCredentials(String ipAddress, int port, List<String> credentials) {
-        for (String credential : credentials) {
+        for (String credential : buildCredentialsList(macAddress)) {
             String[] parts = credential.split(":");
             String username = parts[0];
             String password = parts[1];
 
-            if (testTelnetLogin(ipAddress, port, username, password)) {
-                logger.warn("Telnet INSECURE on {}: credentials {}/{} work", ipAddress, username, password);
+            if (testTelnetLogin(ipAddress, telnetPort, username, password)) {
+                logger.warn("Telnet open on {}: credentials {}/{} work", ipAddress, username, password);
+                result.setUsername(username);
                 result.setPassword(password);
                 return new SecurityTestResult(true, false);
             }
         }
 
-        logger.info("Telnet custom cred SECURE on {}", ipAddress);
-        return new SecurityTestResult(true, true);
-    }
-
-    private SecurityTestResult testTelnetWithDefaultCredentials(String ipAddress, int port, String macAddress) {
-        if (testTelnetLogin(ipAddress, port, DEFAULT_USERNAME, DEFAULT_PASSWORD)) {
-            logger.warn("Telnet INSECURE on {}: factory credentials {}/{} work", ipAddress, DEFAULT_USERNAME, DEFAULT_PASSWORD);
-            result.setPassword(DEFAULT_PASSWORD);
-            return new SecurityTestResult(true, false);
-        }
-
-        String macBasedPassword = generateMacBasedPassword(macAddress);
-        if (testTelnetLogin(ipAddress, port, DEFAULT_USERNAME, macBasedPassword)) {
-            logger.warn("Telnet INSECURE on {}: factory credentials {}/{} work", ipAddress, DEFAULT_USERNAME, macBasedPassword);
-            result.setPassword(macBasedPassword);
-            return new SecurityTestResult(true, false);
-        }
-
-        logger.info("Telnet SECURE on {}", ipAddress);
+        logger.info("Telnet secured on {}", ipAddress);
         return new SecurityTestResult(true, true);
     }
 
@@ -253,51 +225,35 @@ public class ProtocolTestService {
             return new SecurityTestResult(false, true);
         }
 
-        List<String> customAccounts = PreferencesManager.getCustomAccountMap();
-
-        if (!customAccounts.isEmpty()) {
-            return testSshWithCustomCredentials(ipAddress, sshPort, customAccounts);
-        } else {
-            return testSshWithDefaultCredentials(ipAddress, sshPort, macAddress);
-        }
-    }
-
-    private SecurityTestResult testSshWithCustomCredentials(String ipAddress, int port, List<String> credentials) {
-        for (String credential : credentials) {
+        for (String credential : buildCredentialsList(macAddress)) {
             String[] parts = credential.split(":");
             String username = parts[0];
             String password = parts[1];
 
-            if (testSshLogin(ipAddress, port, username, password)) {
+            if (testSshLogin(ipAddress, sshPort, username, password)) {
+                logger.warn("SSH OPEN on {}: credentials {}/{} work", ipAddress, username, password);
                 result.setUsername(username);
                 result.setPassword(password);
-                logger.warn("SSH INSECURE on {}: credentials {}/{} work", ipAddress, username, password);
                 return new SecurityTestResult(true, false);
             }
         }
 
-        logger.info("SSH custom cred SECURE on {}", ipAddress);
+        logger.info("SSH secured on {}", ipAddress);
         return new SecurityTestResult(true, true);
     }
 
-    private SecurityTestResult testSshWithDefaultCredentials(String ipAddress, int port, String macAddress) {
-        if (testSshLogin(ipAddress, port, DEFAULT_USERNAME, DEFAULT_PASSWORD)) {
-            result.setUsername(DEFAULT_USERNAME);
-            result.setPassword(DEFAULT_PASSWORD);
-            logger.warn("SSH INSECURE on {}: factory credentials {}/{} work", ipAddress, DEFAULT_USERNAME, DEFAULT_PASSWORD);
-            return new SecurityTestResult(true, false);
-        }
-
-        String macBasedPassword = generateMacBasedPassword(macAddress);
-        if (testSshLogin(ipAddress, port, DEFAULT_USERNAME, macBasedPassword)) {
-            result.setUsername(DEFAULT_USERNAME);
-            result.setPassword(macBasedPassword);
-            logger.warn("SSH INSECURE on {}: factory credentials {}/{} work", ipAddress, DEFAULT_USERNAME, macBasedPassword);
-            return new SecurityTestResult(true, false);
-        }
-
-        logger.info("SSH SECURE on {}", ipAddress);
-        return new SecurityTestResult(true, true);
+    /**
+     * Builds the list of credentials to test for a device.
+     * Custom accounts are tested first, followed by default credentials.
+     *
+     * @param macAddress the MAC address used to generate the MAC-based password
+     * @return list of credentials in format "username:password"
+     */
+    private List<String> buildCredentialsList(String macAddress) {
+        List<String> credentials = new ArrayList<>(PreferencesManager.getCustomAccountMap());
+        credentials.add(DEFAULT_USERNAME + ":" + DEFAULT_PASSWORD);
+        credentials.add(DEFAULT_USERNAME + ":" + generateMacBasedPassword(macAddress));
+        return credentials;
     }
 
     /**
