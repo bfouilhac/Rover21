@@ -71,8 +71,9 @@ public class RSTPSSHService {
     private static final Pattern ROOT_PRIORITY_PATTERN = Pattern.compile("Root ID\\s+Priority\\s+(\\d+)");
     private static final Pattern ROOT_COST_ALT_PATTERN = Pattern.compile("Cost\\s+(\\d+)");
     private static final Pattern TOPOLOGY_CHANGE_PATTERN = Pattern.compile("last change occurred\\s+(.+?)\\s+ago");
+
     // Supports gi1, fa1, ge1, te1, etc. and also formats like "Gi 1/0/1"
-    private static final Pattern PORT_LINE_ALT_PATTERN = Pattern.compile("^\\s*([a-zA-Z]+\\d+(?:/\\d+)*)\\s+(\\w+)\\s+(\\d+)\\.(\\d+)\\s+(\\d+)\\s+(\\w+)\\s+(\\w+).*");
+    private static final Pattern PORT_LINE_ALT_PATTERN = Pattern.compile("^\\s*([A-Za-z]++\\d++(?:/\\d++)*+)\\s+(\\w+)\\s+(\\d+)\\.(\\d+)\\s+(\\d+)\\s+(\\w+)\\s+(\\w+)\\s+.*$");
 
     // Thread-safe map for persistent SSH connections (key = IP address)
     private final Map<String, SSHConnection> connections = new ConcurrentHashMap<>();
@@ -654,8 +655,8 @@ public class RSTPSSHService {
 
     /**
      * Parses a single port line from Format 2 output.
-     * Format: "     gi1  enabled   128.1     20000   Frw   Desg       No P2P (RSTP)"
-     *         "     gi1  enabled   128.1     20000   Blk   Altn       No P2P (RSTP)"
+     * Format: "gi1 enabled 128.1 20000 Frw Desg No P2P (RSTP)"
+     *         "gi1 enabled 128.1 20000 Blk Altn No P2P (RSTP)"
      */
     private RSTPPort parsePortLineFormat2(String line) {
         Matcher matcher = PORT_LINE_ALT_PATTERN.matcher(line.trim());
@@ -823,6 +824,12 @@ public class RSTPSSHService {
                 int hours = Integer.parseInt(timeParts[0].trim());
                 int minutes = Integer.parseInt(timeParts[1].trim());
                 int seconds = Integer.parseInt(timeParts[2].trim());
+
+                // Convert excess hours to days (e.g., 65:00:00 -> 2d 17:00:00)
+                if (hours >= 24) {
+                    days += hours / 24;
+                    hours = hours % 24;
+                }
 
                 return String.format("%02d:%02d:%02d:%02d", days, hours, minutes, seconds);
             }
