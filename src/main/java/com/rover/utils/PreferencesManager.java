@@ -49,6 +49,7 @@ public class PreferencesManager {
     // Protocol port preferences
     private static final String KEY_SSH_PORT = "protocol.ssh.port";
     private static final String KEY_TELNET_PORT = "protocol.telnet.port";
+    private static final String KEY_PROTOCOL_TEST_TIMEOUT = "protocol.test.timeout";
 
     private static final String DEFAULT_LANGUAGE = "en";
     private static final String DEFAULT_SNMP_COMMUNITY = "public";
@@ -61,6 +62,7 @@ public class PreferencesManager {
     private static final int DEFAULT_DISCOVERY_LISTEN_PORT = 62631;
     private static final int DEFAULT_SSH_PORT = 22;
     private static final int DEFAULT_TELNET_PORT = 23;
+    private static final int DEFAULT_PROTOCOL_TEST_TIMEOUT = 1000;
 
     private static final String KEY_LAST_EXPORT_PATH = "last.export.path";
     private static final String KEY_DEFAULT_CONFIG_PATH = "default.config.path";
@@ -361,6 +363,20 @@ public class PreferencesManager {
      * @param port the Telnet port
      */
     public static void saveTelnetPort(int port) {saveInt(KEY_TELNET_PORT, port, "Telnet port");}
+
+    /**
+     * Retrieves the protocol test timeout in milliseconds.
+     *
+     * @return the timeout in ms (default: 1000)
+     */
+    public static int getProtocolTestTimeout() {return prefs.getInt(KEY_PROTOCOL_TEST_TIMEOUT, DEFAULT_PROTOCOL_TEST_TIMEOUT);}
+
+    /**
+     * Saves the protocol test timeout.
+     *
+     * @param timeout the timeout in milliseconds
+     */
+    public static void saveProtocolTestTimeout(int timeout) {saveInt(KEY_PROTOCOL_TEST_TIMEOUT, timeout, "Protocol test timeout");}
 
     /**
      * Saves a string preference and flushes to persistent storage.

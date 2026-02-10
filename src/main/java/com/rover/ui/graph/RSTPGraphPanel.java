@@ -34,7 +34,7 @@ import java.util.stream.Collectors;
  * The main panel for RSTP topology graph visualization using the JUNG library.
  * Provides an interactive graph with zoom, pan, drag, and node selection.
  *
- * @author Benjamin FOUILHAC, ADM21 - February 2026
+ * @author Benjamin FOUILHAC, ADM21 - January/February 2026
  */
 public class RSTPGraphPanel extends JPanel {
 

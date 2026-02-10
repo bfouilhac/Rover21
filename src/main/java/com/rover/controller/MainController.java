@@ -140,7 +140,7 @@ public class MainController implements MainWindow.UIEventListener {
     /**
      * Handles the startup config button click event.
      * <p>
-     * This method downloads the configuration via SSH using "show running-config"
+     * This method downloads the configuration via SSH using "show startup-config"
      * which is universal across all PLANET switch models.
      * </p>
      *

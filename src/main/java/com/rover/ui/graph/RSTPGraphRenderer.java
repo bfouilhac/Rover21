@@ -14,7 +14,7 @@ import java.awt.geom.RoundRectangle2D;
  * Defines colors, shapes, strokes, and labels for RSTP topology visualization.
  * Edge labels dynamically adjust based on node positions for visual consistency.
  *
- * @author Benjamin FOUILHAC, ADM21 - February 2026
+ * @author Benjamin FOUILHAC, ADM21 - January/February 2026
  */
 public class RSTPGraphRenderer {
 

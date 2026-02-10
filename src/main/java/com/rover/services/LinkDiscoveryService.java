@@ -18,7 +18,7 @@ import java.util.function.Consumer;
  * Discovery is performed in parallel with a configurable thread pool.
  * </p>
  *
- * @author Benjamin FOUILHAC, ADM21 - February 2026
+ * @author Benjamin FOUILHAC, ADM21 - January/February 2026
  */
 public class LinkDiscoveryService {
 

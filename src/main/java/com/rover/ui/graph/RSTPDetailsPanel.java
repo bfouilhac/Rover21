@@ -13,7 +13,7 @@ import java.awt.*;
  * Panel displaying detailed information about a selected RSTP node.
  * Shows device properties and port states table.
  *
- * @author Benjamin FOUILHAC, ADM21 - February 2026
+ * @author Benjamin FOUILHAC, ADM21 - January/February 2026
  */
 public class RSTPDetailsPanel extends JPanel {
 

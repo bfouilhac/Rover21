@@ -15,10 +15,7 @@ public record RSTPLink(RSTPNode sourceNode, int sourcePort, RSTPNode destination
      * @return true if both ports are forwarding, false otherwise
      */
     public boolean isActive() {
-        RSTPPortState srcState = getPortState(sourceNode, sourcePort);
-        RSTPPortState dstState = getPortState(destinationNode, destinationPort);
-
-        return srcState == RSTPPortState.FORWARDING && dstState == RSTPPortState.FORWARDING;
+        return getPortState(sourceNode, sourcePort) == RSTPPortState.FORWARDING && getPortState(destinationNode, destinationPort) == RSTPPortState.FORWARDING;
     }
 
     /**
@@ -29,10 +26,7 @@ public record RSTPLink(RSTPNode sourceNode, int sourcePort, RSTPNode destination
      * @return true if at least one port state is unknown, false otherwise
      */
     public boolean isUnknown() {
-        RSTPPortState srcState = getPortState(sourceNode, sourcePort);
-        RSTPPortState dstState = getPortState(destinationNode, destinationPort);
-
-        return srcState == RSTPPortState.UNKNOWN || dstState == RSTPPortState.UNKNOWN;
+        return getPortState(sourceNode, sourcePort) == RSTPPortState.UNKNOWN || getPortState(destinationNode, destinationPort) == RSTPPortState.UNKNOWN;
     }
 
     /**

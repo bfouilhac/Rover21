@@ -27,7 +27,7 @@ import java.util.List;
 /**
  * Dialog for displaying RSTP information in a table format.
  *
- * @author Benjamin FOUILHAC, ADM21 - January 2026
+ * @author Benjamin FOUILHAC, ADM21 - January/February 2026
  */
 public class RSTPTopologyDialog extends JDialog {
 

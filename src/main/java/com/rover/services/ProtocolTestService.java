@@ -18,13 +18,15 @@ import java.util.List;
 /**
  * Service for testing protocol connectivity and security on PLANET switches.
  * <p>
- * Additionally, for Telnet and SSH, the service performs security testing by attempting
- * to authenticate with default credentials (admin/admin) and MAC-based passwords
- * (sw + last 6 chars of MAC). This helps identify devices that still use factory
- * default passwords and represent a security risk.
+ * For Telnet and SSH, the service performs security testing by attempting to authenticate
+ * with credentials in the following order:
+ * 1. Custom accounts configured by the user in preferences
+ * 2. Default credentials (admin/admin)
+ * 3. MAC-based passwords (sw + last 6 chars of MAC)
+ * This helps identify devices that still use factory default passwords or known credentials.
  * </p>
  * <p>
- * This service now uses {@link SSHConnectionManager} for SSH operations to avoid code duplication.
+ * This service uses {@link SSHConnectionManager} for SSH operations to avoid code duplication.
  * </p>
  *
  * @author Benjamin FOUILHAC, ADM21 - January/February 2026
@@ -34,7 +36,6 @@ public class ProtocolTestService {
 
     private static final Logger logger = LoggerFactory.getLogger(ProtocolTestService.class);
 
-    private static final int PORT_CHECK_TIMEOUT = 1000;
     private static final int TELNET_TIMEOUT = 1500;
     private static final int HTTP_PORT = 80;
 
@@ -128,7 +129,7 @@ public class ProtocolTestService {
 
     private boolean isPortOpen(String ipAddress, int port) {
         try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(ipAddress, port), PORT_CHECK_TIMEOUT);
+            socket.connect(new InetSocketAddress(ipAddress, port), PreferencesManager.getProtocolTestTimeout());
             return true;
         } catch (IOException e) {
             return false;
@@ -162,7 +163,7 @@ public class ProtocolTestService {
 
     private boolean testTelnetLogin(String ipAddress, int port, String username, String password) {
         try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress(ipAddress, port), PORT_CHECK_TIMEOUT);
+            socket.connect(new InetSocketAddress(ipAddress, port), PreferencesManager.getProtocolTestTimeout());
             socket.setSoTimeout(PROMPT_RESPONSE_DELAY);
 
             InputStream in = socket.getInputStream();

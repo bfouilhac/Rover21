@@ -3,13 +3,14 @@ package com.rover.model.rstp;
 /**
  * Represents a single port on a switch with its RSTP state and role.
  *
- * @author Benjamin FOUILHAC, ADM21 - January 2026
+ * @author Benjamin FOUILHAC, ADM21 - January/February 2026
  */
 public class RSTPPort {
 
-    private final int portNumber;
     private RSTPPortState state;
     private RSTPPortRole role;
+
+    private final int portNumber;
     private int pathCost;
 
     public RSTPPort(int portNumber) {

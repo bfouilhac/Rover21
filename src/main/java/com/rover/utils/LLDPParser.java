@@ -14,7 +14,7 @@ import java.util.regex.Pattern;
  * 1. Tabular format (e.g., gi1 | MAC | PortID)
  * 2. Detailed block format (e.g., Local Interface: ..., Chassis ID: ...)
  * </p>
- * @author Benjamin FOUILHAC ADM21 - February 2026
+ * @author Benjamin FOUILHAC ADM21 - January/February 2026
  */
 public class LLDPParser {
 

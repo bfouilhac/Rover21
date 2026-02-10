@@ -64,6 +64,7 @@ public class PreferencesDialog extends JDialog {
 
     private JSpinner sshPortSpinner;
     private JSpinner telnetPortSpinner;
+    private JSpinner protocolTimeoutSpinner;
 
     private JTextField defaultConfigPathField;
 
@@ -347,6 +348,7 @@ public class PreferencesDialog extends JDialog {
 
         addSshPortRow(panel, gbc);
         addTelnetPortRow(panel, gbc);
+        addProtocolTimeoutRow(panel, gbc);
         addCredentialsSeparator(panel, gbc);
         addCredentialsLabel(panel, gbc);
         addCredentialsInputFields(panel, gbc);
@@ -384,9 +386,24 @@ public class PreferencesDialog extends JDialog {
         panel.add(new JLabel(""), gbc);
     }
 
-    private void addCredentialsSeparator(JPanel panel, GridBagConstraints gbc) {
+    private void addProtocolTimeoutRow(JPanel panel, GridBagConstraints gbc) {
         gbc.gridx = 0;
         gbc.gridy = 2;
+        gbc.weightx = 0;
+        panel.add(new JLabel(lang.get("preferences.protocol_timeout")), gbc);
+
+        gbc.gridx = 1;
+        protocolTimeoutSpinner = createSpinner(PreferencesManager.getProtocolTestTimeout(), 500, 10000, 100);
+        panel.add(protocolTimeoutSpinner, gbc);
+
+        gbc.gridx = 2;
+        gbc.weightx = 1.0;
+        panel.add(new JLabel("ms"), gbc);
+    }
+
+    private void addCredentialsSeparator(JPanel panel, GridBagConstraints gbc) {
+        gbc.gridx = 0;
+        gbc.gridy = 3;
         gbc.gridwidth = 3;
         gbc.insets = new Insets(BLOCK_SPACING, COMPONENT_SPACING, 10, COMPONENT_SPACING);
         panel.add(new JSeparator(SwingConstants.HORIZONTAL), gbc);
@@ -394,7 +411,7 @@ public class PreferencesDialog extends JDialog {
 
     private void addCredentialsLabel(JPanel panel, GridBagConstraints gbc) {
         gbc.gridx = 0;
-        gbc.gridy = 3;
+        gbc.gridy = 4;
         gbc.gridwidth = 3;
         gbc.insets = new Insets(COMPONENT_SPACING, COMPONENT_SPACING, COMPONENT_SPACING, COMPONENT_SPACING);
         panel.add(new JLabel(lang.get("preferences.title_pwd")), gbc);
@@ -402,7 +419,7 @@ public class PreferencesDialog extends JDialog {
 
     private void addCredentialsInputFields(JPanel panel, GridBagConstraints gbc) {
         gbc.gridx = 0;
-        gbc.gridy = 4;
+        gbc.gridy = 5;
         gbc.gridwidth = 1;
         gbc.weightx = 1.0;
         customUsernameField = new JTextField();
@@ -410,7 +427,7 @@ public class PreferencesDialog extends JDialog {
         customUsernameField.setToolTipText(lang.get("preferences.username_tooltip"));
         panel.add(customUsernameField, gbc);
 
-        gbc.gridy = 5;
+        gbc.gridy = 6;
         customPasswordField = new JTextField();
         customPasswordField.setPreferredSize(new Dimension(250, FIELD_HEIGHT));
         customPasswordField.setToolTipText(lang.get("preferences.pwd_tooltip"));
@@ -693,6 +710,7 @@ public class PreferencesDialog extends JDialog {
 
         sshPortSpinner.setValue(PreferencesManager.getSshPort());
         telnetPortSpinner.setValue(PreferencesManager.getTelnetPort());
+        protocolTimeoutSpinner.setValue(PreferencesManager.getProtocolTestTimeout());
 
         defaultConfigPathField.setText(PreferencesManager.getDefaultConfigPath());
 
@@ -723,6 +741,7 @@ public class PreferencesDialog extends JDialog {
 
         PreferencesManager.saveSshPort((Integer) sshPortSpinner.getValue());
         PreferencesManager.saveTelnetPort((Integer) telnetPortSpinner.getValue());
+        PreferencesManager.saveProtocolTestTimeout((Integer) protocolTimeoutSpinner.getValue());
 
         PreferencesManager.saveDefaultConfigPath(defaultConfigPathField.getText());
 

@@ -12,26 +12,28 @@ import java.util.List;
  * bridge ID, root bridge information, port states, and MAC address table.
  * </p>
  *
- * @author Benjamin FOUILHAC, ADM21 - January 2026
+ * @author Benjamin FOUILHAC, ADM21 - January/February 2026
  */
 public class RSTPNode {
 
     private final PlanetSwitchDevice device;
+    private RSTPVersion version;
+    private List<RSTPPort> ports;
+
     private String bridgeId;
     private String rootBridgeId;
-    private int rootCost;
-    private int hopCount;
-    private boolean isRootBridge;
-    private RSTPVersion version;
     private String topologyChangeTime;
 
-    private List<RSTPPort> ports;
+    private int rootCost;
+    private int hopCount;
+
+    private boolean isRootBridge;
 
     public RSTPNode(PlanetSwitchDevice device) {
         this.device = device;
+        this.version = RSTPVersion.UNKNOWN;
         this.ports = new ArrayList<>();
         this.isRootBridge = false;
-        this.version = RSTPVersion.UNKNOWN;
     }
 
     public boolean isRootBridge() {return this.isRootBridge;}

@@ -643,6 +643,7 @@ public class MainWindow extends JFrame {
 
         menuBar.add(createFileMenu());
         menuBar.add(createEditMenu());
+        menuBar.add(createOptionsMenu());
         menuBar.add(createViewMenu());
         menuBar.add(createHelpMenu());
 
@@ -679,23 +680,33 @@ public class MainWindow extends JFrame {
     }
 
     /**
-     * Creates the Edit menu with preferences and language submenu.
+     * Creates the Edit menu.
      */
     private JMenu createEditMenu() {
         JMenu editMenu = new JMenu(lang.get("menu.edit"));
 
-        JMenuItem preferencesItem = new JMenuItem(lang.get("menu.preferences"));
-        preferencesItem.addActionListener(_ -> showPreferences());
-
         JMenuItem clearItem = new JMenuItem(lang.get("menu.clear"));
         clearItem.addActionListener(_ -> handleClearResults());
 
-        editMenu.add(preferencesItem);
         editMenu.add(clearItem);
-        editMenu.addSeparator();
-        editMenu.add(createLanguageMenu());
 
         return editMenu;
+    }
+
+    /**
+     * Creates the Options menu with preferences and language submenu.
+     */
+    private JMenu createOptionsMenu() {
+        JMenu optionsMenu = new JMenu(lang.get("menu.options"));
+
+        JMenuItem preferencesItem = new JMenuItem(lang.get("menu.preferences"));
+        preferencesItem.addActionListener(_ -> showPreferences());
+
+        optionsMenu.add(preferencesItem);
+        optionsMenu.addSeparator();
+        optionsMenu.add(createLanguageMenu());
+
+        return optionsMenu;
     }
 
     /**
@@ -890,7 +901,7 @@ public class MainWindow extends JFrame {
                 adm21LogoOriginal = originalImage;
             }
 
-            // Calculate initial size based on current window width
+            // Calculate the initial size based on the current window width
             int windowWidth = getWidth() > 0 ? getWidth() : DEFAULT_WINDOW_WIDTH;
             int logoWidth = calculateResponsiveWidth(windowWidth, LOGO_WIDTH_RATIO, LOGO_MIN_WIDTH, LOGO_MAX_WIDTH);
             int logoHeight = (int) (logoWidth / LOGO_ASPECT_RATIO);

@@ -204,7 +204,6 @@ public class RSTPSSHService {
         } catch (Exception e) {
             logger.error("Failed to check RSTP status for {}: {}", device.getIpAddress(), e.getMessage());
             closeConnection(device.getIpAddress());
-            Thread.currentThread().interrupt();
             return false;
         }
         // NOTE: Connection kept open for later operations (getRSTPInfo, getLLDPNeighborInfo)
@@ -296,7 +295,6 @@ public class RSTPSSHService {
             } catch (Exception e) {
                 logger.error("LLDP communication error with {}: {}", ip, e.getMessage());
                 closeConnection(ip);
-                Thread.currentThread().interrupt();
                 return null;
             }
         }
@@ -637,7 +635,7 @@ public class RSTPSSHService {
             String state = matcher.group(3);
             int pathCost = Integer.parseInt(matcher.group(5));
 
-            // Extract port number from name (e.g., "Gi 1/2" -> 2)
+            // Extract the port number from the name (e.g., "Gi 1/2" -> 2)
             int portNumber = extractPortNumber(portName);
 
             RSTPPort port = new RSTPPort(portNumber);

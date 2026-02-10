@@ -51,7 +51,6 @@ public class ExportService {
             logger.info("CSV export completed successfully: {} devices exported", devices.size());
         } catch (IOException e) {
             logger.error("Error during CSV export", e);
-            Thread.currentThread().interrupt();
         }
     }
 
@@ -98,7 +97,6 @@ public class ExportService {
             logger.info("XLSX export completed successfully: {} devices exported", devices.size());
         } catch (IOException e) {
             logger.error("Error during XLSX export", e);
-            Thread.currentThread().interrupt();
         }
     }
 
@@ -251,7 +249,6 @@ public class ExportService {
             logger.info("RSTP CSV export completed successfully: {} rows exported", rowCount);
         } catch (IOException e) {
             logger.error("Error during RSTP CSV export", e);
-            Thread.currentThread().interrupt();
         }
     }
 }

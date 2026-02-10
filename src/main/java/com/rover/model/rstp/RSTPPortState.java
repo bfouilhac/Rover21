@@ -3,7 +3,7 @@ package com.rover.model.rstp;
 /**
  * RSTP port states as defined in IEEE 802.1w.
  *
- * @author Benjamin FOUILHAC, ADM21 - January 2026
+ * @author Benjamin FOUILHAC, ADM21 - January/February 2026
  */
 public enum RSTPPortState {
     UNKNOWN("Unknown"),

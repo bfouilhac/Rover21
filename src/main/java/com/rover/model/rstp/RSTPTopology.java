@@ -10,19 +10,17 @@ import java.util.List;
  * along with the identification of the root bridge.
  * </p>
  *
- * @author Benjamin FOUILHAC, ADM21 - January 2026
+ * @author Benjamin FOUILHAC, ADM21 - January/February 2026
  */
 public class RSTPTopology {
 
     private final List<RSTPNode> nodes;
     private final List<RSTPLink> links;
     private RSTPNode rootBridge;
-    private final long discoveryTimestamp;
 
     public RSTPTopology() {
         this.nodes = new ArrayList<>();
         this.links = new ArrayList<>();
-        this.discoveryTimestamp = System.currentTimeMillis();
     }
 
     public List<RSTPNode> getNodes() {return nodes;}
@@ -72,9 +70,8 @@ public class RSTPTopology {
 
     @Override
     public String toString() {
-        return String.format("RstpTopology{nodes=%d, links=%d, root=%s, timestamp=%d}",
+        return String.format("RstpTopology{nodes=%d, links=%d, root=%s}",
                 nodes.size(), links.size(),
-                (rootBridge != null ? rootBridge.getDeviceName() : "none"),
-                discoveryTimestamp);
+                (rootBridge != null ? rootBridge.getDeviceName() : "none"));
     }
 }
