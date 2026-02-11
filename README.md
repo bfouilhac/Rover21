@@ -28,7 +28,7 @@ Network management utility for PLANET switches. Provides device discovery, RSTP 
 
 ## Requirements
 
-- Java 17 or higher
+- Java 25 or higher
 - Network access to target switches
 - SNMP community string (default: public)
 - SSH credentials for advanced features
@@ -38,7 +38,7 @@ Network management utility for PLANET switches. Provides device discovery, RSTP 
 ### From Source
 
 ```bash
-git clone https://github.com/your-repo/Rover21.git
+git clone https://github.com/adm21/Rover21.git
 cd Rover21
 mvn clean package
 java -jar target/Rover21.jar
@@ -93,12 +93,12 @@ src/main/java/com/rover/
 
 | Component | Library |
 |-----------|---------|
-| UI Framework | Swing with FlatLaf |
+| UI Framework | Swing with FlatLaf 3.2.5 |
 | SNMP | SNMP4J 3.7.7 |
 | SSH | JSch 0.1.55 |
 | Graph Visualization | JUNG 2.1.1 |
 | Excel Export | Apache POI 5.4.0 |
-| Logging | SLF4J 2.0.9 |
+| Logging | Logback 1.5.6 (via SLF4J) |
 
 ## Configuration
 
@@ -108,6 +108,16 @@ Application settings are stored in user preferences and can be modified through 
 - SSH default port and credentials
 - Discovery timeout settings
 - Language selection (English/French)
+
+## Logging
+
+Rover21 uses SLF4J with Logback for logging. Logs are written to:
+
+- **Console**: Colored output by log level
+- **File**: `~/.rover21/logs/rover21.log` (daily rotation, 30-day retention)
+- **In-app viewer**: View > View Logs
+
+Log levels can be configured in `src/main/resources/logback.xml`.
 
 ## Network Protocols
 
@@ -135,7 +145,7 @@ Tested with PLANET managed switches including:
 
 ### Prerequisites
 
-- JDK 17+
+- JDK 25+
 - Maven 3.6+
 
 ### Commands
@@ -147,18 +157,15 @@ mvn compile
 # Run tests
 mvn test
 
-# Package
+# Package (creates executable JAR with dependencies)
 mvn package
-
-# Create executable JAR with dependencies
-mvn package -P release
 ```
 
 ## License
 
 Copyright 2026 ADM21. All rights reserved.
 
-## Developper
+## Developer
 
 Benjamin FOUILHAC - ADM21
 
