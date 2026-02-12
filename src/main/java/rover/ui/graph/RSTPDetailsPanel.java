@@ -1,5 +1,6 @@
 package rover.ui.graph;
 
+import rover.model.rstp.EndDevice;
 import rover.model.rstp.RSTPNode;
 import rover.model.rstp.RSTPPort;
 import rover.utils.LanguageManager;
@@ -196,6 +197,36 @@ public class RSTPDetailsPanel extends JPanel {
             };
             portsTableModel.addRow(row);
         }
+    }
+
+    /**
+     * Updates the panel with details of the selected end device.
+     *
+     * @param device the selected end device
+     */
+    public void setSelectedEndDevice(EndDevice device) {
+        if (device == null) {
+            showEmptyState();
+            return;
+        }
+
+        deviceNameValue.setText(lang.get("topology.details_end_device"));
+        ipAddressValue.setText("-");
+        macAddressValue.setText(device.getMacAddress());
+        bridgeIdValue.setText("-");
+        rootBridgeIdValue.setText("-");
+        rootCostValue.setText("-");
+        hopCountValue.setText("-");
+        stpVersionValue.setText("-");
+
+        // Show connected switch info in ports table
+        portsTableModel.setRowCount(0);
+        Object[] row = {
+                device.getConnectedPort(),
+                device.getConnectedSwitch().getDeviceName(),
+                "Connected"
+        };
+        portsTableModel.addRow(row);
     }
 
     /**

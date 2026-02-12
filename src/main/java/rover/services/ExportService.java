@@ -106,7 +106,6 @@ public class ExportService {
     private CellStyle createHeaderStyle(Workbook workbook) {
         CellStyle style = workbook.createCellStyle();
         Font font = workbook.createFont();
-        font.setBold(true);
         font.setFontHeightInPoints((short) 11);
         style.setFont(font);
         style.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());

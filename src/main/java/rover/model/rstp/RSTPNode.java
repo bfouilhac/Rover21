@@ -14,7 +14,7 @@ import java.util.List;
  *
  * @author Benjamin FOUILHAC, ADM21 - January/February 2026
  */
-public class RSTPNode {
+public class RSTPNode implements TopologyNode {
 
     private final PlanetSwitchDevice device;
     private RSTPVersion version;
@@ -105,6 +105,21 @@ public class RSTPNode {
 
     public void setPorts(List<RSTPPort> ports) {
         this.ports = ports;
+    }
+
+    @Override
+    public String getDisplayLabel() {
+        return device.getDeviceName();
+    }
+
+    @Override
+    public String getUniqueId() {
+        return device.getIpAddress();
+    }
+
+    @Override
+    public boolean isSwitch() {
+        return true;
     }
 
     @Override

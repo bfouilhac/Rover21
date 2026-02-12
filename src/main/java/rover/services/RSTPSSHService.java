@@ -13,6 +13,8 @@ import rover.model.rstp.*;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import rover.model.rstp.MacAddressEntry;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -74,6 +76,16 @@ public class RSTPSSHService {
 
     // Supports gi1, fa1, ge1, te1, etc. and also formats like "Gi 1/0/1"
     private static final Pattern PORT_LINE_ALT_PATTERN = Pattern.compile("^\\s*([A-Za-z]++\\d++(?:/\\d++)*+)\\s+(\\w+)\\s+(\\d+)\\.(\\d+)\\s+(\\d+)\\s+(\\w+)\\s+(\\w+)\\s+.*$");
+
+    // MAC Address Table patterns - Format 1: "Dynamic 1    08:8f:c3:48:64:f5 GigabitEthernet 1/15"
+    private static final Pattern MAC_TABLE_FORMAT1_PATTERN = Pattern.compile(
+            "^(Dynamic|Static)\\s+(\\d+)\\s+([0-9a-fA-F:]+)\\s+(?:GigabitEthernet|2\\.5GigabitEthernet|FastEthernet|TenGigabitEthernet)\\s+(\\d+)/(\\d+).*$",
+            Pattern.CASE_INSENSITIVE);
+
+    // MAC Address Table patterns - Format 2: "    1 | A8:F7:E0:DE:4E:BE |    Management     | CPU"
+    private static final Pattern MAC_TABLE_FORMAT2_PATTERN = Pattern.compile(
+            "^\\s*(\\d+)\\s*\\|\\s*([0-9a-fA-F:]+)\\s*\\|\\s*(\\w+)\\s*\\|\\s*(\\S+).*$",
+            Pattern.CASE_INSENSITIVE);
 
     // Thread-safe map for persistent SSH connections (key = IP address)
     private final Map<String, SSHConnection> connections = new ConcurrentHashMap<>();
@@ -838,6 +850,188 @@ public class RSTPSSHService {
 
         // Return original if parsing fails
         return tcTime;
+    }
+
+    /**
+     * Retrieves the MAC address table from a device.
+     * Thread-safety is guaranteed by internal locking on the device IP.
+     *
+     * @param device the device to query
+     * @return list of MAC address entries
+     */
+    public List<MacAddressEntry> getMacAddressTable(PlanetSwitchDevice device) {
+        String ip = device.getIpAddress();
+
+        if (device.getUsername() == null || device.getPassword() == null) {
+            logger.warn("No SSH credentials for {} - skipping MAC table query", ip);
+            return new ArrayList<>();
+        }
+
+        Object lock = deviceLocks.computeIfAbsent(ip, _ -> new Object());
+
+        synchronized (lock) {
+            try {
+                SSHConnection conn = getOrCreateConnection(device);
+
+                if (conn == null || !conn.isValid()) {
+                    logger.warn("Invalid SSH connection for {} - skipping MAC table query", ip);
+                    return new ArrayList<>();
+                }
+
+                InputStream in = conn.channel().getInputStream();
+                OutputStream out = conn.channel().getOutputStream();
+
+                if (in == null || out == null) {
+                    logger.warn("Invalid SSH streams for {} - skipping MAC table query", ip);
+                    closeConnection(ip);
+                    return new ArrayList<>();
+                }
+
+                while (in.available() > 0) in.read();
+
+                String response = executeCommandInSession(in, out, "show mac address-table");
+
+                if (isInvalidResponse(response)) {
+                    logger.debug("Falling back to 'show mac-address-table' for {}", ip);
+                    response = executeCommandInSession(in, out, "show mac-address-table");
+                }
+
+                return parseMacAddressTable(response);
+
+            } catch (IOException e) {
+                logger.error("MAC table I/O error for {}: {}", ip, e.getMessage());
+                closeConnection(ip);
+                return new ArrayList<>();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                logger.warn("MAC table query interrupted for {}", ip);
+                return new ArrayList<>();
+            } catch (Exception e) {
+                String errorMsg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                logger.error("MAC table query failed for {}: {} - {}", ip, e.getClass().getSimpleName(), errorMsg);
+                closeConnection(ip);
+                return new ArrayList<>();
+            }
+        }
+    }
+
+    /**
+     * Parses the MAC address table output.
+     * Supports both Format 1 (space-separated) and Format 2 (pipe-separated).
+     *
+     * @param output the command output
+     * @return list of parsed MAC address entries
+     */
+    private List<MacAddressEntry> parseMacAddressTable(String output) {
+        List<MacAddressEntry> entries = new ArrayList<>();
+
+        if (output == null || output.isBlank()) {
+            return entries;
+        }
+
+        boolean isFormat2 = output.contains("|");
+        String[] lines = output.split("\n");
+
+        for (String line : lines) {
+            MacAddressEntry entry = isFormat2
+                    ? parseMacEntryFormat2(line)
+                    : parseMacEntryFormat1(line);
+
+            if (entry != null) {
+                entries.add(entry);
+                logger.debug("Parsed MAC entry: {}", entry);
+            }
+        }
+
+        logger.info("Parsed {} MAC address entries", entries.size());
+        return entries;
+    }
+
+    /**
+     * Parses a MAC address entry from Format 1 (space-separated).
+     * Example: "Dynamic 1    08:8f:c3:48:64:f5 GigabitEthernet 1/15"
+     *
+     * @param line the line to parse
+     * @return parsed entry or null if not a valid entry
+     */
+    private MacAddressEntry parseMacEntryFormat1(String line) {
+        Matcher matcher = MAC_TABLE_FORMAT1_PATTERN.matcher(line.trim());
+        if (!matcher.matches()) {
+            return null;
+        }
+
+        try {
+            String type = matcher.group(1);
+            int vlanId = Integer.parseInt(matcher.group(2));
+            String mac = normalizeMacAddress(matcher.group(3));
+            int port = Integer.parseInt(matcher.group(5));
+
+            return new MacAddressEntry(type, vlanId, mac, port);
+        } catch (Exception e) {
+            logger.warn("Failed to parse MAC entry Format 1: {}", line);
+            return null;
+        }
+    }
+
+    /**
+     * Parses a MAC address entry from Format 2 (pipe-separated).
+     * Example: "    1 | A8:F7:E0:DE:4E:BE |      Dynamic      | gi2"
+     *
+     * @param line the line to parse
+     * @return parsed entry or null if not a valid entry
+     */
+    private MacAddressEntry parseMacEntryFormat2(String line) {
+        Matcher matcher = MAC_TABLE_FORMAT2_PATTERN.matcher(line.trim());
+        if (!matcher.matches()) {
+            return null;
+        }
+
+        try {
+            int vlanId = Integer.parseInt(matcher.group(1));
+            String mac = normalizeMacAddress(matcher.group(2));
+            String type = matcher.group(3).trim();
+            String portStr = matcher.group(4).trim();
+
+            // Skip CPU/management entries
+            if ("cpu".equalsIgnoreCase(portStr)) {
+                return null;
+            }
+
+            // Extract port number from "gi2", "fa1", etc.
+            int port = extractPortFromString(portStr);
+            if (port <= 0) {
+                return null;
+            }
+
+            return new MacAddressEntry(type, vlanId, mac, port);
+        } catch (Exception e) {
+            logger.warn("Failed to parse MAC entry Format 2: {}", line);
+            return null;
+        }
+    }
+
+    /**
+     * Extracts port number from a port string like "gi2", "fa1", "ge1/0/5".
+     *
+     * @param portStr the port string
+     * @return the port number, or 0 if unable to extract
+     */
+    private int extractPortFromString(String portStr) {
+        if (portStr == null || portStr.isEmpty()) return 0;
+
+        Matcher matcher = Pattern.compile("(\\d+)$").matcher(portStr);
+        return matcher.find() ? Integer.parseInt(matcher.group(1)) : 0;
+    }
+
+    /**
+     * Normalizes a MAC address to uppercase with colons.
+     *
+     * @param mac the MAC address to normalize
+     * @return normalized MAC address
+     */
+    private String normalizeMacAddress(String mac) {
+        if (mac == null) return "";
+        return mac.toUpperCase().replace("-", ":");
     }
 
     /**

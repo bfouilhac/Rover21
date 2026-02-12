@@ -2,6 +2,8 @@ package rover.ui;
 
 import rover.controller.MainController;
 import rover.model.PlanetSwitchDevice;
+import rover.model.rstp.EndDevice;
+import rover.model.rstp.EndDeviceLink;
 import rover.model.rstp.RSTPLink;
 import rover.model.rstp.RSTPNode;
 import rover.model.rstp.RSTPTopology;
@@ -517,6 +519,14 @@ public class RSTPTopologyDialog extends JDialog {
             }
 
             @Override
+            public void onEndDeviceDiscovered(EndDevice endDevice, EndDeviceLink link) {
+                logger.debug("End device discovered: {} on {}:{}",
+                        endDevice.getMacAddress(),
+                        link.switchNode().getDeviceName(),
+                        link.switchPort());
+            }
+
+            @Override
             public void onProgress(String messageKey) {
                 updateStatus(lang.get(messageKey));
             }
@@ -545,8 +555,15 @@ public class RSTPTopologyDialog extends JDialog {
                         }
 
                         int linkCount = topology.getLinks().size();
-                        updateStatus(lang.get("status.topology_ready", topology.getNodeCount())
-                                + (linkCount > 0 ? " - " + linkCount + " link(s)" : ""));
+                        int endDeviceCount = topology.getEndDeviceCount();
+                        StringBuilder statusMsg = new StringBuilder(lang.get("status.topology_ready", topology.getNodeCount()));
+                        if (linkCount > 0) {
+                            statusMsg.append(" - ").append(linkCount).append(" link(s)");
+                        }
+                        if (endDeviceCount > 0) {
+                            statusMsg.append(" - ").append(endDeviceCount).append(" end device(s)");
+                        }
+                        updateStatus(statusMsg.toString());
                     } else {
                         logger.warn("No RSTP-enabled devices found, showing basic info only");
                         updateStatus(lang.get("status.topology_ready_empty"));

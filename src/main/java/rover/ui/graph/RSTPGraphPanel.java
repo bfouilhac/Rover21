@@ -1,9 +1,13 @@
 package rover.ui.graph;
 
 import com.google.common.base.Function;
+import rover.model.rstp.EndDevice;
+import rover.model.rstp.EndDeviceLink;
 import rover.model.rstp.RSTPLink;
 import rover.model.rstp.RSTPNode;
 import rover.model.rstp.RSTPTopology;
+import rover.model.rstp.TopologyLink;
+import rover.model.rstp.TopologyNode;
 import rover.utils.LanguageManager;
 import edu.uci.ics.jung.algorithms.layout.Layout;
 import edu.uci.ics.jung.algorithms.layout.StaticLayout;
@@ -47,9 +51,9 @@ public class RSTPGraphPanel extends JPanel {
     private final transient ScalingControl scaler = new CrossoverScalingControl();
 
     private transient RSTPTopology topology;
-    private transient Graph<RSTPNode, RSTPLink> graph;
-    private transient VisualizationViewer<RSTPNode, RSTPLink> vv;
-    private transient DefaultModalGraphMouse<RSTPNode, RSTPLink> graphMouse;
+    private transient Graph<TopologyNode, TopologyLink> graph;
+    private transient VisualizationViewer<TopologyNode, TopologyLink> vv;
+    private transient DefaultModalGraphMouse<TopologyNode, TopologyLink> graphMouse;
     private JPanel graphContainer;
     private RSTPDetailsPanel detailsPanel;
     private JLabel emptyStateLabel;
@@ -177,10 +181,11 @@ public class RSTPGraphPanel extends JPanel {
             viewSize = new Dimension(800, 600);
         }
 
-        Layout<RSTPNode, RSTPLink> layout = createHierarchicalLayout(graph, topology);
+        Layout<TopologyNode, TopologyLink> layout = createHierarchicalLayout(graph, topology);
 
         // Pass metrics to renderer for adaptive sizing and position-aware labels
-        renderer.setGraphMetrics(topology.getNodeCount(), viewSize);
+        int totalNodes = topology.getNodeCount() + topology.getEndDeviceCount();
+        renderer.setGraphMetrics(totalNodes, viewSize);
         renderer.setLayout(layout);
 
         vv = new VisualizationViewer<>(layout);
@@ -193,37 +198,50 @@ public class RSTPGraphPanel extends JPanel {
         graphContainer.repaint();
     }
 
-    private Graph<RSTPNode, RSTPLink> buildGraph(RSTPTopology topology) {
-        UndirectedSparseGraph<RSTPNode, RSTPLink> g = new UndirectedSparseGraph<>();
+    private Graph<TopologyNode, TopologyLink> buildGraph(RSTPTopology topology) {
+        UndirectedSparseGraph<TopologyNode, TopologyLink> g = new UndirectedSparseGraph<>();
 
+        // Add switch nodes
         for (RSTPNode node : topology.getNodes()) {
             g.addVertex(node);
         }
 
+        // Add end device nodes
+        for (EndDevice endDevice : topology.getEndDevices()) {
+            g.addVertex(endDevice);
+        }
+
+        // Add switch-to-switch links
         for (RSTPLink link : topology.getLinks()) {
             g.addEdge(link, link.sourceNode(), link.destinationNode());
+        }
+
+        // Add switch-to-end-device links
+        for (EndDeviceLink link : topology.getEndDeviceLinks()) {
+            g.addEdge(link, link.switchNode(), link.endDevice());
         }
 
         return g;
     }
 
-    private Layout<RSTPNode, RSTPLink> createHierarchicalLayout(Graph<RSTPNode, RSTPLink> graph, RSTPTopology topology) {
+    private Layout<TopologyNode, TopologyLink> createHierarchicalLayout(Graph<TopologyNode, TopologyLink> graph, RSTPTopology topology) {
         Dimension size = graphContainer.getSize();
         if (size.width == 0 || size.height == 0) {
             size = new Dimension(800, 600);
         }
 
-        Function<RSTPNode, Point2D> initializer = new HierarchicalPositionFunction(topology, size);
+        Function<TopologyNode, Point2D> initializer = new HierarchicalPositionFunction(topology, size);
         return new StaticLayout<>(graph, initializer, size);
     }
 
     /**
      * Function that positions nodes based on topology structure.
      * Uses hierarchical layout when hop counts differ, or circular layout otherwise.
+     * End devices are positioned below their connected switches.
      */
-    private static class HierarchicalPositionFunction implements Function<RSTPNode, Point2D> {
+    private static class HierarchicalPositionFunction implements Function<TopologyNode, Point2D> {
 
-        private final Map<RSTPNode, Point2D> positions = new HashMap<>();
+        private final Map<TopologyNode, Point2D> positions = new HashMap<>();
 
         public HierarchicalPositionFunction(RSTPTopology topology, Dimension size) {
             calculatePositions(topology, size);
@@ -243,16 +261,16 @@ public class RSTPGraphPanel extends JPanel {
 
             // If all nodes have the same hop count, use circular/grid layout
             if (nodesByHopCount.size() == 1) {
-                calculateCircularLayout(nodes, size);
+                calculateCircularLayout(nodes, topology, size);
             } else {
-                calculateHierarchicalLayout(nodesByHopCount, maxHopCount, size);
+                calculateHierarchicalLayout(nodesByHopCount, maxHopCount, topology, size);
             }
         }
 
         /**
          * Circular layout when all nodes are at the same level.
          */
-        private void calculateCircularLayout(List<RSTPNode> nodes, Dimension size) {
+        private void calculateCircularLayout(List<RSTPNode> nodes, RSTPTopology topology, Dimension size) {
             double centerX = size.width / 2.0;
             double centerY = size.height / 2.0;
             double radius = Math.min(size.width, size.height) / 2.0 - 100;
@@ -278,31 +296,40 @@ public class RSTPGraphPanel extends JPanel {
             List<RSTPNode> nodesToArrange = rootBridge != null ? otherNodes : nodes;
             int nodeCount = nodesToArrange.size();
 
-            if (nodeCount == 0) return;
+            if (nodeCount == 0 && rootBridge == null) return;
 
             // Adjust radius if the root is in a center
-            if (rootBridge != null) {
+            if (rootBridge != null && nodeCount > 0) {
                 radius = Math.min(radius, Math.min(size.width, size.height) / 3.0);
             }
 
             for (int i = 0; i < nodeCount; i++) {
-                double angle = 2 * Math.PI * i / nodeCount - Math.PI / 2; // Start from the top
+                double angle = 2 * Math.PI * i / nodeCount - Math.PI / 2;
                 double x = centerX + radius * Math.cos(angle);
                 double y = centerY + radius * Math.sin(angle);
                 positions.put(nodesToArrange.get(i), new Point2D.Double(x, y));
             }
+
+            // Position end devices around their connected switches
+            positionEndDevices(topology, size);
         }
 
         /**
          * Hierarchical layout based on hop count (root at top).
          */
         private void calculateHierarchicalLayout(Map<Integer, List<RSTPNode>> nodesByHopCount,
-                                                  int maxHopCount, Dimension size) {
+                                                  int maxHopCount, RSTPTopology topology, Dimension size) {
             double marginTop = 80;
             double marginBottom = 60;
             double marginSide = 100;
             double availableHeight = size.height - marginTop - marginBottom;
             double availableWidth = size.width - (2 * marginSide);
+
+            // Reserve space for end devices at the bottom
+            int endDeviceCount = topology.getEndDeviceCount();
+            if (endDeviceCount > 0) {
+                availableHeight -= 80;
+            }
 
             double layerHeight = maxHopCount > 0 ? availableHeight / (maxHopCount + 1) : availableHeight / 2;
 
@@ -319,10 +346,46 @@ public class RSTPGraphPanel extends JPanel {
                     positions.put(node, new Point2D.Double(x, y));
                 }
             }
+
+            // Position end devices below their connected switches
+            positionEndDevices(topology, size);
+        }
+
+        /**
+         * Positions end devices below their connected switches.
+         */
+        private void positionEndDevices(RSTPTopology topology, Dimension size) {
+            // Group end devices by their connected switch
+            Map<RSTPNode, List<EndDevice>> devicesBySwitch = new HashMap<>();
+            for (EndDevice device : topology.getEndDevices()) {
+                devicesBySwitch
+                        .computeIfAbsent(device.getConnectedSwitch(), _ -> new ArrayList<>())
+                        .add(device);
+            }
+
+            double verticalOffset = 70;
+
+            for (Map.Entry<RSTPNode, List<EndDevice>> entry : devicesBySwitch.entrySet()) {
+                RSTPNode switchNode = entry.getKey();
+                List<EndDevice> devices = entry.getValue();
+
+                Point2D switchPos = positions.get(switchNode);
+                if (switchPos == null) continue;
+
+                int deviceCount = devices.size();
+                double spacing = Math.min(60, size.width * 0.8 / (deviceCount + 1));
+                double startX = switchPos.getX() - (deviceCount - 1) * spacing / 2.0;
+
+                for (int i = 0; i < deviceCount; i++) {
+                    double x = startX + i * spacing;
+                    double y = switchPos.getY() + verticalOffset;
+                    positions.put(devices.get(i), new Point2D.Double(x, y));
+                }
+            }
         }
 
         @Override
-        public Point2D apply(RSTPNode node) {
+        public Point2D apply(TopologyNode node) {
             return positions.getOrDefault(node, new Point2D.Double(400, 300));
         }
     }
@@ -345,11 +408,15 @@ public class RSTPGraphPanel extends JPanel {
         vv.getRenderContext().setVertexFontTransformer(_ -> renderer.getVertexLabelFont());
         vv.getRenderContext().setEdgeFontTransformer(_ -> renderer.getEdgeLabelFont());
 
-        PickedState<RSTPNode> pickedState = vv.getPickedVertexState();
+        PickedState<TopologyNode> pickedState = vv.getPickedVertexState();
         pickedState.addItemListener(e -> {
             if (e.getStateChange() == ItemEvent.SELECTED) {
-                RSTPNode node = (RSTPNode) e.getItem();
-                detailsPanel.setSelectedNode(node);
+                TopologyNode node = (TopologyNode) e.getItem();
+                if (node instanceof RSTPNode rstpNode) {
+                    detailsPanel.setSelectedNode(rstpNode);
+                } else if (node instanceof EndDevice endDevice) {
+                    detailsPanel.setSelectedEndDevice(endDevice);
+                }
             } else if (e.getStateChange() == ItemEvent.DESELECTED && pickedState.getPicked().isEmpty()) {
                     detailsPanel.showEmptyState();
             }
@@ -360,7 +427,7 @@ public class RSTPGraphPanel extends JPanel {
         graphMouse = new DefaultModalGraphMouse<>();
         graphMouse.setMode(ModalGraphMouse.Mode.PICKING);
         vv.setGraphMouse(graphMouse);
-        panModeButton.setSelected(false); // Reset pan mode button state
+        panModeButton.setSelected(false);
 
         vv.addMouseListener(new MouseAdapter() {
             @Override
@@ -374,15 +441,24 @@ public class RSTPGraphPanel extends JPanel {
         vv.setVertexToolTipTransformer(this::createTooltip);
     }
 
-    private String createTooltip(RSTPNode node) {
+    private String createTooltip(TopologyNode node) {
         if (node == null) return null;
 
-        StringBuilder html = new StringBuilder("<html><b>");
-        html.append(node.getDeviceName()).append("</b><br/>");
+        if (node instanceof RSTPNode rstpNode) {
+            return createSwitchTooltip(rstpNode);
+        } else if (node instanceof EndDevice endDevice) {
+            return createEndDeviceTooltip(endDevice);
+        }
+        return null;
+    }
+
+    private String createSwitchTooltip(RSTPNode node) {
+        StringBuilder html = new StringBuilder("<html>");
+        html.append(node.getDeviceName()).append("<br/>");
         html.append("IP: ").append(node.getIpAddress()).append("<br/>");
 
         if (node.isRootBridge()) {
-            html.append("<b style='color:#2E7D32'>Root bridge</b><br/>");
+            html.append("Root bridge<br/>");
         } else {
             html.append("Root Cost: ").append(node.getRootCost()).append("<br/>");
             html.append("Hops: ").append(node.getHopCount()).append("<br/>");
@@ -392,6 +468,15 @@ public class RSTPGraphPanel extends JPanel {
             html.append("Version: ").append(node.getVersion()).append("<br/>");
         }
 
+        html.append("</html>");
+        return html.toString();
+    }
+
+    private String createEndDeviceTooltip(EndDevice device) {
+        StringBuilder html = new StringBuilder("<html><b>End Device</b><br/>");
+        html.append("MAC: ").append(device.getMacAddress()).append("<br/>");
+        html.append("Connected to: ").append(device.getConnectedSwitch().getDeviceName()).append("<br/>");
+        html.append("Port: ").append(device.getConnectedPort()).append("<br/>");
         html.append("</html>");
         return html.toString();
     }
@@ -412,14 +497,14 @@ public class RSTPGraphPanel extends JPanel {
         if (vv == null || graph == null || graph.getVertexCount() == 0) return;
 
         Dimension viewSize = vv.getSize();
-        Layout<RSTPNode, RSTPLink> layout = vv.getGraphLayout();
+        Layout<TopologyNode, TopologyLink> layout = vv.getGraphLayout();
 
         double minX = Double.MAX_VALUE;
         double maxX = Double.MIN_VALUE;
         double minY = Double.MAX_VALUE;
         double maxY = Double.MIN_VALUE;
 
-        for (RSTPNode node : graph.getVertices()) {
+        for (TopologyNode node : graph.getVertices()) {
             Point2D point = layout.apply(node);
             minX = Math.min(minX, point.getX());
             maxX = Math.max(maxX, point.getX());

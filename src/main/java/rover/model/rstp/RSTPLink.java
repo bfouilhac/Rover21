@@ -6,7 +6,7 @@ package rover.model.rstp;
  *
  * @author Benjamin FOUILHAC, ADM21 - January/February 2026
  */
-public record RSTPLink(RSTPNode sourceNode, int sourcePort, RSTPNode destinationNode, int destinationPort) {
+public record RSTPLink(RSTPNode sourceNode, int sourcePort, RSTPNode destinationNode, int destinationPort) implements TopologyLink {
 
     /**
      * Determines if this link is active (forwarding traffic).
@@ -47,6 +47,31 @@ public record RSTPLink(RSTPNode sourceNode, int sourcePort, RSTPNode destination
 
         // Port isn't found in RSTP data - return UNKNOWN to display a link as blocked
         return RSTPPortState.UNKNOWN;
+    }
+
+    @Override
+    public TopologyNode getSourceNode() {
+        return sourceNode;
+    }
+
+    @Override
+    public TopologyNode getDestinationNode() {
+        return destinationNode;
+    }
+
+    @Override
+    public int getSourcePort() {
+        return sourcePort;
+    }
+
+    @Override
+    public int getDestinationPort() {
+        return destinationPort;
+    }
+
+    @Override
+    public boolean isSwitchLink() {
+        return true;
     }
 
     @Override

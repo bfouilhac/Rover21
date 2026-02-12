@@ -1,8 +1,11 @@
 package rover.ui.graph;
 
 import com.google.common.base.Function;
+import rover.model.rstp.EndDevice;
 import rover.model.rstp.RSTPLink;
 import rover.model.rstp.RSTPNode;
+import rover.model.rstp.TopologyLink;
+import rover.model.rstp.TopologyNode;
 import edu.uci.ics.jung.algorithms.layout.Layout;
 
 import java.awt.*;
@@ -20,9 +23,11 @@ public class RSTPGraphRenderer {
 
     private static final Color COLOR_ROOT_BRIDGE = new Color(204, 255, 153);
     private static final Color COLOR_SWITCH = new Color(153, 204, 255);
+    private static final Color COLOR_END_DEVICE = new Color(255, 224, 178); // Orange/peach for end devices
     private static final Color COLOR_EDGE_ACTIVE = new Color(66, 66, 66);
     private static final Color COLOR_EDGE_BLOCKED = new Color(66, 66, 66);
-    private static final Color COLOR_EDGE_UNKNOWN = new Color(200, 60, 60); // Red for stale LLDP data
+    private static final Color COLOR_EDGE_UNKNOWN = new Color(200, 60, 60);
+    private static final Color COLOR_EDGE_END_DEVICE = new Color(150, 150, 150); // Gray for end device links
     private static final Color COLOR_VERTEX_BORDER = new Color(33, 33, 33);
 
     // Default node sizes (for small networks)
@@ -32,7 +37,7 @@ public class RSTPGraphRenderer {
     private static final int MIN_NODE_HEIGHT = 30;
     private static final int ARC_SIZE = 14;
 
-    private Layout<RSTPNode, RSTPLink> layout;
+    private Layout<TopologyNode, TopologyLink> layout;
     private int nodeCount = 1;
     private Dimension viewSize = new Dimension(800, 600);
 
@@ -79,29 +84,46 @@ public class RSTPGraphRenderer {
 
     /**
      * Creates a function that returns the fill color for vertices.
-     * Root bridge is green, other switches are blue.
+     * Root bridge is green, switches are blue, end devices are orange.
      *
      * @return vertex paint function
      */
-    public Function<RSTPNode, Paint> createVertexPaintTransformer() {
-        return node -> node.isRootBridge() ? COLOR_ROOT_BRIDGE : COLOR_SWITCH;
+    public Function<TopologyNode, Paint> createVertexPaintTransformer() {
+        return node -> {
+            if (!node.isSwitch()) {
+                return COLOR_END_DEVICE;
+            }
+            return node.isRootBridge() ? COLOR_ROOT_BRIDGE : COLOR_SWITCH;
+        };
     }
 
     /**
      * Creates a function that returns the shape for vertices.
      * Size is adaptive based on node count and view size.
-     * Root bridge is slightly larger than regular switches.
+     * Root bridge is slightly larger, end devices are smaller.
      *
      * @return vertex shape function
      */
-    public Function<RSTPNode, Shape> createVertexShapeTransformer() {
+    public Function<TopologyNode, Shape> createVertexShapeTransformer() {
         return node -> {
             int baseWidth = calculateNodeWidth();
             int baseHeight = calculateNodeHeight();
 
-            // Root bridge is 20% larger
-            int width = node.isRootBridge() ? (int) (baseWidth * 1.2) : baseWidth;
-            int height = node.isRootBridge() ? (int) (baseHeight * 1.2) : baseHeight;
+            int width;
+            int height;
+
+            if (!node.isSwitch()) {
+                // End devices are smaller
+                width = (int) (baseWidth * 0.7);
+                height = (int) (baseHeight * 0.8);
+            } else if (node.isRootBridge()) {
+                // Root bridge is 20% larger
+                width = (int) (baseWidth * 1.2);
+                height = (int) (baseHeight * 1.2);
+            } else {
+                width = baseWidth;
+                height = baseHeight;
+            }
 
             int arcSize = Math.min(ARC_SIZE, Math.min(width, height) / 4);
 
@@ -115,51 +137,64 @@ public class RSTPGraphRenderer {
 
     /**
      * Creates a function that returns the label text for vertices.
-     * Shows device name and optionally system location.
-     * Text length adapts to node size.
+     * Switches show device name and location, end devices show their name and MAC address.
      *
      * @return vertex label function
      */
-    public Function<RSTPNode, String> createVertexLabelTransformer() {
+    public Function<TopologyNode, String> createVertexLabelTransformer() {
         return node -> {
-            String name = node.getDeviceName();
-            String location = node.getDevice().getSystemLocation();
-
-            // Calculate max length based on node width
-            int nodeWidth = calculateNodeWidth();
-            int maxLength = Math.max(8, nodeWidth / 8);
-
-            // Truncate name if too long
-            if (name != null && name.length() > maxLength) {
-                name = name.substring(0, maxLength - 2) + "..";
+            if (node instanceof EndDevice endDevice) {
+                return createEndDeviceLabel(endDevice);
+            } else if (node instanceof RSTPNode rstpNode) {
+                return createSwitchLabel(rstpNode);
             }
-            if (name == null || name.isEmpty()) {
-                name = "?";
-            }
-
-            // For small nodes, only show name
-            if (nodeWidth < 80) {
-                return String.format("<html><center>%s</center></html>", name);
-            }
-
-            // Truncate location if too long
-            if (location != null && location.length() > maxLength) {
-                location = location.substring(0, maxLength - 2) + "..";
-            }
-
-            // Build HTML label with two lines
-            StringBuilder html = new StringBuilder("<html><center>");
-            html.append(name);
-
-            if (location != null && !location.isEmpty()) {
-                html.append("<br/><font size='2' color='#555555'>");
-                html.append(location);
-                html.append("</font>");
-            }
-
-            html.append("</center></html>");
-            return html.toString();
+            return "?";
         };
+    }
+
+    /**
+     * Creates the label for an end device.
+     */
+    private String createEndDeviceLabel(EndDevice device) {
+        return String.format("<html><center>%s<br/><font size='2'>%s</font></center></html>", device.getName(), device.getMacAddress());
+    }
+
+    /**
+     * Creates the label for a switch node.
+     */
+    private String createSwitchLabel(RSTPNode node) {
+        String name = node.getDeviceName();
+        String location = node.getDevice().getSystemLocation();
+
+        int nodeWidth = calculateNodeWidth();
+        int maxLength = Math.max(8, nodeWidth / 8);
+
+        if (name != null && name.length() > maxLength) {
+            name = name.substring(0, maxLength - 2) + "..";
+        }
+        if (name == null || name.isEmpty()) {
+            name = "?";
+        }
+
+        if (nodeWidth < 80) {
+            return String.format("<html><center>%s</center></html>", name);
+        }
+
+        if (location != null && location.length() > maxLength) {
+            location = location.substring(0, maxLength - 2) + "..";
+        }
+
+        StringBuilder html = new StringBuilder("<html><center>");
+        html.append(name);
+
+        if (location != null && !location.isEmpty()) {
+            html.append("<br/><font size='2' color='#555555'>");
+            html.append(location);
+            html.append("</font>");
+        }
+
+        html.append("</center></html>");
+        return html.toString();
     }
 
     /**
@@ -167,10 +202,13 @@ public class RSTPGraphRenderer {
      *
      * @return vertex stroke function
      */
-    public Function<RSTPNode, Stroke> createVertexStrokeTransformer() {
-        return node -> node.isRootBridge()
-                ? new BasicStroke(3.0f)
-                : new BasicStroke(2.0f);
+    public Function<TopologyNode, Stroke> createVertexStrokeTransformer() {
+        return node -> {
+            if (!node.isSwitch()) {
+                return new BasicStroke(1.5f);
+            }
+            return node.isRootBridge() ? new BasicStroke(3.0f) : new BasicStroke(2.0f);
+        };
     }
 
     /**
@@ -178,7 +216,7 @@ public class RSTPGraphRenderer {
      *
      * @return vertex draw paint function
      */
-    public Function<RSTPNode, Paint> createVertexDrawPaintTransformer() {
+    public Function<TopologyNode, Paint> createVertexDrawPaintTransformer() {
         return _ -> COLOR_VERTEX_BORDER;
     }
 
@@ -189,14 +227,21 @@ public class RSTPGraphRenderer {
      * - Active links: dark gray
      * - RSTP blocked links: dark gray (differentiated by stroke style)
      * - Unknown state links (stale LLDP): red
+     * - End device links: light gray
      * </p>
      *
      * @return edge paint function
      */
-    public Function<RSTPLink, Paint> createEdgePaintTransformer() {
+    public Function<TopologyLink, Paint> createEdgePaintTransformer() {
         return link -> {
-            if (link.isUnknown()) {
-                return COLOR_EDGE_UNKNOWN;
+            if (!link.isSwitchLink()) {
+                return COLOR_EDGE_END_DEVICE;
+            }
+            if (link instanceof RSTPLink rstpLink) {
+                if (rstpLink.isUnknown()) {
+                    return COLOR_EDGE_UNKNOWN;
+                }
+                return rstpLink.isActive() ? COLOR_EDGE_ACTIVE : COLOR_EDGE_BLOCKED;
             }
             return link.isActive() ? COLOR_EDGE_ACTIVE : COLOR_EDGE_BLOCKED;
         };
@@ -208,15 +253,20 @@ public class RSTPGraphRenderer {
      * Styles:
      * - Active links: solid line
      * - RSTP blocked links: dashed line
-     * - Unknown state links (stale LLDP): solid line (color indicates the issue)
+     * - End device links: thinner solid line
      * </p>
      *
      * @return edge stroke function
      */
-    public Function<RSTPLink, Stroke> createEdgeStrokeTransformer() {
+    public Function<TopologyLink, Stroke> createEdgeStrokeTransformer() {
         return link -> {
-            if (link.isActive() || link.isUnknown()) {
-                return new BasicStroke(2.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND);
+            if (!link.isSwitchLink()) {
+                return new BasicStroke(1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND);
+            }
+            if (link instanceof RSTPLink rstpLink) {
+                if (rstpLink.isActive() || rstpLink.isUnknown()) {
+                    return new BasicStroke(2.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND);
+                }
             }
             // RSTP blocked: dashed line
             return new BasicStroke(2.0f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10.0f, new float[]{6.0f, 4.0f}, 0.0f);
@@ -229,36 +279,40 @@ public class RSTPGraphRenderer {
      *
      * @param layout the graph layout
      */
-    public void setLayout(Layout<RSTPNode, RSTPLink> layout) {
+    public void setLayout(Layout<TopologyNode, TopologyLink> layout) {
         this.layout = layout;
     }
 
     /**
      * Creates a function that returns the label text for edges.
-     * The label shows port numbers ordered by visual position:
-     * left port first, right port second (or top/bottom for vertical edges).
-     * This ensures the label always matches the visual representation.
+     * For switch-to-switch links: shows port numbers ordered by visual position.
+     * For end device links: shows only the switch port number.
      *
      * @return edge label function
      */
-    public Function<RSTPLink, String> createEdgeLabelTransformer() {
+    public Function<TopologyLink, String> createEdgeLabelTransformer() {
         return link -> {
-            int srcPort = link.sourcePort();
-            int dstPort = link.destinationPort();
+            if (!link.isSwitchLink()) {
+                // End device link: show only the switch port
+                return String.valueOf(link.getSourcePort());
+            }
+
+            int srcPort = link.getSourcePort();
+            int dstPort = link.getDestinationPort();
 
             if (layout == null) {
-                // Fallback: consistent ordering by node name
-                String srcName = link.sourceNode().getDeviceName();
-                String dstName = link.destinationNode().getDeviceName();
-                if (srcName != null && dstName != null && srcName.compareTo(dstName) > 0) {
+                // Fallback: consistent ordering by unique ID
+                String srcId = link.getSourceNode().getUniqueId();
+                String dstId = link.getDestinationNode().getUniqueId();
+                if (srcId != null && dstId != null && srcId.compareTo(dstId) > 0) {
                     return String.format("%d - %d", dstPort, srcPort);
                 }
                 return String.format("%d - %d", srcPort, dstPort);
             }
 
             // Get current positions from layout
-            Point2D srcPos = layout.apply(link.sourceNode());
-            Point2D dstPos = layout.apply(link.destinationNode());
+            Point2D srcPos = layout.apply(link.getSourceNode());
+            Point2D dstPos = layout.apply(link.getDestinationNode());
 
             // Determine visual order based on position
             boolean srcIsFirst = determineVisualOrder(srcPos, dstPos);

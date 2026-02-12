@@ -1,18 +1,22 @@
 package rover.services;
 
 import rover.model.PlanetSwitchDevice;
+import rover.model.rstp.EndDevice;
+import rover.model.rstp.EndDeviceLink;
+import rover.model.rstp.MacAddressEntry;
 import rover.model.rstp.RSTPLink;
 import rover.model.rstp.RSTPNode;
 import rover.model.rstp.RSTPTopology;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Service for discovering and building RSTP topology via SSH.
@@ -30,6 +34,7 @@ public class RSTPDiscoveryService {
     public interface DiscoveryProgressCallback {
         void onNodeDiscovered(RSTPNode node);
         void onLinkDiscovered(RSTPLink link);
+        void onEndDeviceDiscovered(EndDevice endDevice, EndDeviceLink link);
         void onProgress(String messageKey);
     }
 
@@ -122,6 +127,14 @@ public class RSTPDiscoveryService {
             // Phase 3: Identify root bridge
             identifyRootBridge(topology);
 
+            // Phase 4: Discover end devices via MAC address table
+            if (topology.isValid()) {
+                notifyProgress("status.topology_discovering_enddevices");
+                logger.info("Phase 4: Starting end device discovery via MAC address table...");
+                discoverEndDevices(topology, devices);
+                logger.info("Phase 4 complete: {} end devices discovered", topology.getEndDeviceCount());
+            }
+
         } finally {
             executor.shutdown();
             try {
@@ -207,6 +220,172 @@ public class RSTPDiscoveryService {
             topology.setRootBridge(rootBridge);
         } else {
             logger.warn("No root bridge found in discovered topology (root bridge may be on another device)");
+        }
+    }
+
+    /** Maximum threads for parallel MAC table discovery */
+    private static final int MAX_MAC_DISCOVERY_THREADS = 10;
+
+    /** Timeout per device for MAC table query (seconds) */
+    private static final int MAC_DISCOVERY_TIMEOUT_SECONDS = 15;
+
+    /**
+     * Discovers end devices by analyzing MAC address tables in parallel.
+     * <p>
+     * An end device is identified when:
+     * - A port has MAC addresses in the MAC table
+     * - That port does NOT have an LLDP neighbor (meaning it's not a switch)
+     * - The MAC address is not from another known switch
+     * </p>
+     *
+     * @param topology the topology to enrich with end devices
+     * @param discoveredDevices the list of the devices found during the discovery
+     */
+    private void discoverEndDevices(RSTPTopology topology, List<PlanetSwitchDevice> discoveredDevices) {
+        List<RSTPNode> nodes = topology.getNodes();
+        if (nodes.isEmpty()) return;
+
+        // Build lookup sets (read-only, shared across threads)
+        Set<String> portsWithLldpNeighbors = buildLldpPortsSet(topology);
+        Set<String> knownSwitchMacs = buildKnownSwitchMacsSet(topology);
+
+        // Thread-safe collection for discovered devices
+        Map<String, EndDevice> topologyDevices = new ConcurrentHashMap<>();
+
+        // Parallel MAC table discovery
+        int poolSize = Math.min(nodes.size(), MAX_MAC_DISCOVERY_THREADS);
+        ExecutorService executor = Executors.newFixedThreadPool(poolSize);
+
+        try {
+            List<Future<?>> futures = new ArrayList<>();
+
+            for (RSTPNode node : nodes) {
+                futures.add(executor.submit(() ->
+                    discoverEndDevicesForNode(node, portsWithLldpNeighbors, knownSwitchMacs, topologyDevices, topology, discoveredDevices)
+                ));
+            }
+
+            // Collect results with timeout
+            for (int i = 0; i < futures.size(); i++) {
+                try {
+                    futures.get(i).get(MAC_DISCOVERY_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                } catch (TimeoutException e) {
+                    logger.warn("MAC table discovery timed out for node {}", nodes.get(i).getDeviceName());
+                } catch (Exception e) {
+                    logger.error("MAC table discovery failed for node {}: {}",
+                            nodes.get(i).getDeviceName(), e.getMessage());
+                }
+            }
+
+            logger.info("Parallel MAC discovery completed: {} end devices found", discoveredDevices.size());
+
+        } finally {
+            executor.shutdown();
+            try {
+                if (!executor.awaitTermination(2, TimeUnit.SECONDS)) {
+                    executor.shutdownNow();
+                }
+            } catch (InterruptedException e) {
+                executor.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    /**
+     * Discovers end devices for a single node (called from thread pool).
+     */
+    private void discoverEndDevicesForNode(RSTPNode node, Set<String> portsWithLldpNeighbors, Set<String> knownSwitchMacs, Map<String, EndDevice> topologyDevices, RSTPTopology topology, List<PlanetSwitchDevice> discoveredDevices) {
+
+        List<String> discoveredMAC = discoveredDevices.stream().map(PlanetSwitchDevice::getMacAddress).toList();
+
+        try {
+            List<MacAddressEntry> macEntries = sshService.getMacAddressTable(node.getDevice());
+
+            for (MacAddressEntry entry : macEntries) {
+                if (!entry.isDynamic() || !entry.isOnPhysicalPort()) {
+                    continue;
+                }
+
+                String portKey = node.getIpAddress() + ":" + entry.port();
+
+                // Skip if this port has an LLDP neighbor (connected to another switch)
+                if (portsWithLldpNeighbors.contains(portKey)) {
+                    continue;
+                }
+
+                // Skip if this MAC belongs to a known switch
+                if (knownSwitchMacs.contains(entry.macAddress())) {
+                    continue;
+                }
+
+                // Use MAC as a key to avoid duplicates across VLANs
+                String deviceKey = entry.macAddress();
+
+                if (!deviceKey.startsWith("A8:F7:E0") || (discoveredMAC.contains(deviceKey))) {
+                    EndDevice endDevice = new EndDevice(entry.macAddress(), node, entry.port());
+
+                    if (discoveredMAC.contains(deviceKey)) {
+                        Optional<PlanetSwitchDevice> found = Optional.empty();
+                        for (PlanetSwitchDevice d : discoveredDevices) {
+                            if (d.getMacAddress().equals(deviceKey)) {
+                                found = Optional.of(d);
+                                break;
+                            }
+                        }
+                        found.ifPresent(planetSwitchDevice -> endDevice.setName(planetSwitchDevice.getDeviceName()));
+                    } else {
+                        endDevice.setName("ICMP");
+                    }
+
+                    topologyDevices.put(deviceKey, endDevice);
+
+                    // Thread-safe add to topology (synchronized internally)
+                    synchronized (topology) {
+                        topology.addEndDevice(endDevice);
+                        EndDeviceLink link = new EndDeviceLink(node, entry.port(), endDevice);
+                        topology.addEndDeviceLink(link);
+                        notifyEndDeviceDiscovered(endDevice, link);
+                    }
+
+                    logger.debug("Discovered end device: {} on {}:{}", entry.macAddress(), node.getDeviceName(), entry.port());
+                }
+            }
+
+        } catch (Exception e) {
+            logger.error("Failed to get MAC table from {}: {}", node.getDeviceName(), e.getMessage());
+        }
+    }
+
+    /**
+     * Builds a set of ports that have LLDP neighbors (switch-to-switch links).
+     */
+    private Set<String> buildLldpPortsSet(RSTPTopology topology) {
+        Set<String> ports = new HashSet<>();
+        for (RSTPLink link : topology.getLinks()) {
+            ports.add(link.sourceNode().getIpAddress() + ":" + link.sourcePort());
+            ports.add(link.destinationNode().getIpAddress() + ":" + link.destinationPort());
+        }
+        return ports;
+    }
+
+    /**
+     * Builds a set of known switch MAC addresses.
+     */
+    private Set<String> buildKnownSwitchMacsSet(RSTPTopology topology) {
+        Set<String> macs = new HashSet<>();
+        for (RSTPNode node : topology.getNodes()) {
+            String mac = node.getDevice().getMacAddress();
+            if (mac != null) {
+                macs.add(mac.toUpperCase().replace("-", ":"));
+            }
+        }
+        return macs;
+    }
+
+    private void notifyEndDeviceDiscovered(EndDevice endDevice, EndDeviceLink link) {
+        if (progressCallback != null) {
+            progressCallback.onEndDeviceDiscovered(endDevice, link);
         }
     }
 

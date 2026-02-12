@@ -10,6 +10,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.regex.Pattern;
 
 /**
  * Centralized SSH connection manager for PLANET switches.
@@ -28,6 +29,13 @@ public class SSHConnectionManager {
     private static final int DEFAULT_TIMEOUT_MS = 2000;
     private static final int DEFAULT_CHANNEL_TIMEOUT_MS = 2000;
     private static final int SSH_READ_TIMEOUT = 3000;
+
+    // Regex for valid shell prompts: hostname followed by # or $ or > at line end
+    // Matches: "IGS-6325#", "switch$", "admin@host>", "hostname #", etc.
+    private static final Pattern SHELL_PROMPT_PATTERN = Pattern.compile("[a-zA-Z0-9_\\-@]+\\s*[#$>]\\s*$", Pattern.MULTILINE);
+
+    // Alternative pattern for prompts with parentheses like "(config)#"
+    private static final Pattern CONFIG_PROMPT_PATTERN = Pattern.compile("[a-zA-Z0-9_\\-@()]+\\s*[#$>]\\s*$", Pattern.MULTILINE);
 
     private final JSch jsch;
 
@@ -250,41 +258,6 @@ public class SSHConnectionManager {
                 continue;
             }
 
-            // Handle username prompt
-            if (isUsernamePrompt(recentResponse)) {
-                if (!authFailedMessageSeen) {
-                    usernamePromptCount++;
-                }
-                logger.info("SSH: Second Username prompt #{} detected on {}", usernamePromptCount, ipAddress);
-
-                if (usernamePromptCount > 3) {
-                    logger.warn("SSH: Too many username prompts ({}) on {} - authentication likely failed", usernamePromptCount, ipAddress);
-                    return false;
-                }
-
-                sendCredential(out, username);
-                fullResponse.setLength(0);
-                authFailedMessageSeen = false; // Reset flag
-                Thread.sleep(200);
-                continue;
-            }
-
-            // Handle password prompt
-            if (recentResponse.contains("password:")) {
-                passwordPromptCount++;
-                logger.info("SSH: Password prompt #{} detected on {}", passwordPromptCount, ipAddress);
-
-                if (passwordPromptCount > 3) {
-                    logger.warn("SSH: Too many password prompts ({}) on {} - authentication likely failed", passwordPromptCount, ipAddress);
-                    return false;
-                }
-
-                sendCredential(out, password);
-                fullResponse.setLength(0);
-                Thread.sleep(200);
-                continue;
-            }
-
             // Check for shell prompt (success)
             if (isShellPrompt(recentResponse)) {
                 logger.info("SSH: Authentication successful for {} - got shell prompt", ipAddress);
@@ -338,23 +311,25 @@ public class SSHConnectionManager {
 
     /**
      * Detects terminal authentication failure (permanent rejection).
+     * <p>
+     * This method looks for clear indicators that authentication has failed permanently,
+     * such as "access denied", "login incorrect", etc. It avoids false positives by
+     * requiring specific phrases rather than partial matches.
+     * </p>
      *
      * @param text the full text buffer
      * @param usernamePromptCount number of username prompts seen
      * @param passwordPromptCount number of password prompts seen
      * @return true if authentication has permanently failed
      */
-    public  boolean isTerminalAuthFailure(String text, int usernamePromptCount, int passwordPromptCount) {
+    public boolean isTerminalAuthFailure(String text, int usernamePromptCount, int passwordPromptCount) {
         // Only consider terminal failure if we've made attempts
         if (usernamePromptCount == 0 && passwordPromptCount == 0) {
             return false;
         }
 
-        // Look for definitive rejection messages
-        return text.contains("access denied") ||
-                text.contains("incorrect") ||
-                text.contains("invalid credentials") ||
-                text.contains("login incorrect");
+        // Use the same failure indicators as containsAuthFailureIndicators
+        return containsAuthFailureIndicators(text);
     }
 
     /**
@@ -377,20 +352,52 @@ public class SSHConnectionManager {
         return false;
     }
 
+    /**
+     * Analyzes the final SSH response after timeout to determine an authentication result.
+     * <p>
+     * This is a fallback check when the main loop times out. It examines the final
+     * response to improve the detection whether authentication succeeded.
+     * </p>
+     *
+     * @param finalResponse the complete response buffer
+     * @param ipAddress the IP address (for logging)
+     * @param usernamePromptCount number of username prompts seen
+     * @param passwordPromptCount number of password prompts seen
+     * @return true only if a valid shell prompt is definitively detected
+     */
     private boolean analyzeFinalSshState(String finalResponse, String ipAddress, int usernamePromptCount, int passwordPromptCount) {
         String response = finalResponse.toLowerCase();
 
-        logger.info("SSH timeout reached for {} after {}ms", ipAddress, SSH_READ_TIMEOUT);
+        logger.debug("SSH: Analyzing final state for {} after timeout", ipAddress);
 
+        // If still asking for credentials, authentication failed
         if (isUsernamePrompt(response) || response.contains("password:")) {
-            logger.warn("SSH authentication incomplete on {} - still asking for credentials: {}", ipAddress, finalResponse);
+            logger.info("SSH: Authentication failed on {} - still asking for credentials", ipAddress);
+            return false;
         }
 
+        // If we see authentication failure messages, it failed
+        if (containsAuthFailureIndicators(response)) {
+            logger.info("SSH: Authentication failed on {} - failure message detected", ipAddress);
+            return false;
+        }
+
+        // Check if there's a valid shell prompt at the end
+        String lastChars = finalResponse.length() > 100
+                ? finalResponse.substring(finalResponse.length() - 100)
+                : finalResponse;
+
+        if (isShellPrompt(lastChars.toLowerCase())) {
+            logger.info("SSH: Authentication successful for {} - found prompt in final state", ipAddress);
+            return true;
+        }
+
+        // If we sent credentials but got no clear response, assume failure
         if (usernamePromptCount > 0 || passwordPromptCount > 0) {
-            logger.warn("SSH response unclear on {} after sending credentials: {}", ipAddress, finalResponse);
+            logger.info("SSH: Authentication unclear on {} after sending credentials - assuming failed", ipAddress);
         }
 
-        logger.warn("SSH response unclear on {} - no prompts detected: {}", ipAddress, finalResponse);
+        logger.info("SSH: Authentication failed on {} - no valid prompt detected", ipAddress);
         return false;
     }
 
@@ -423,7 +430,52 @@ public class SSHConnectionManager {
                 text.contains("user name:");
     }
 
+    /**
+     * Checks if the text contains a valid shell prompt indicating successful authentication.
+     * <p>
+     * A valid shell prompt must:
+     * - Match a pattern: hostname[#$>] at the end of the line
+     * - NOT contain authentication failure indicators
+     * - NOT be a partial prompt during login flow
+     * </p>
+     *
+     * @param text the text to check (should be recent response, not full buffer)
+     * @return true if a valid shell prompt is detected
+     */
     public boolean isShellPrompt(String text) {
-        return text.contains("#") || text.contains(">") || text.contains("$") || text.contains("IGS");
+        if (text == null || text.isEmpty()) {
+            return false;
+        }
+
+        // Reject if the text contains authentication failure indicators
+        if (containsAuthFailureIndicators(text)) {
+            return false;
+        }
+
+        // Reject if still asking for credentials
+        if (text.contains("password:") || isUsernamePrompt(text)) {
+            return false;
+        }
+
+        // Check for a valid prompt pattern at the end of the text
+        return SHELL_PROMPT_PATTERN.matcher(text).find() || CONFIG_PROMPT_PATTERN.matcher(text).find();
+    }
+
+    /**
+     * Checks if the text contains authentication failure indicators.
+     *
+     * @param text the text to check
+     * @return true if authentication failure is indicated
+     */
+    private boolean containsAuthFailureIndicators(String text) {
+        String lower = text.toLowerCase();
+        return lower.contains("authentication failed") ||
+               lower.contains("access denied") ||
+               lower.contains("login incorrect") ||
+               lower.contains("invalid") ||
+               lower.contains("permission denied") ||
+               lower.contains("incorrect password") ||
+               lower.contains("bad password") ||
+               lower.contains("login failed");
     }
 }
