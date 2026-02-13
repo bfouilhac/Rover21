@@ -391,10 +391,11 @@ public class RSTPDiscoveryService {
 
     /**
      * Shuts down the discovery service and cleans up all resources.
-     * This includes closing SSH connections managed by the SSH service.
+     * This includes closing SSH connections and clearing callbacks.
      */
     public void shutdown() {
         logger.info("Shutting down RSTPDiscoveryService");
+        progressCallback = null; // Clear callback to prevent stale references
         sshService.shutdown();
         logger.info("RSTPDiscoveryService shutdown complete");
     }

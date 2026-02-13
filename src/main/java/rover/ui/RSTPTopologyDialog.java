@@ -24,6 +24,7 @@ import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -77,6 +78,7 @@ public class RSTPTopologyDialog extends JDialog {
     private JTable rstpTable;
     private DefaultTableModel tableModel;
     private transient RSTPTopology topology;
+    private final transient List<PlanetSwitchDevice> originalDevices; // Stored for refresh
     private JLabel statusLabel;
 
     private final transient ExportService exportService = new ExportService();
@@ -106,6 +108,7 @@ public class RSTPTopologyDialog extends JDialog {
         setModalityType(ModalityType.MODELESS);
 
         this.discoveryService = new RSTPDiscoveryService();
+        this.originalDevices = new ArrayList<>(devices); // Store for refresh
 
         setSize(DIALOG_WIDTH, DIALOG_HEIGHT);
         setMinimumSize(new Dimension(MIN_DIALOG_WIDTH, MIN_DIALOG_HEIGHT));
@@ -672,26 +675,29 @@ public class RSTPTopologyDialog extends JDialog {
 
     /**
      * Refreshes both table and graph views by rediscovering topology.
+     * Uses the original device list to ensure newly connected devices are detected.
      * Closes all SSH connections first to ensure fresh data from switches.
      */
     private void refresh() {
-        if (topology == null || topology.getNodes().isEmpty()) {
+        if (originalDevices == null || originalDevices.isEmpty()) {
+            logger.warn("No devices to refresh");
             return;
         }
 
-        List<PlanetSwitchDevice> devices = topology.getNodes().stream()
-                .map(RSTPNode::getDevice)
-                .toList();
+        logger.info("Refreshing topology with {} devices", originalDevices.size());
 
         // Close all SSH connections to force fresh queries
         discoveryService.shutdown();
+
+        // Clear old topology reference
+        topology = null;
 
         // Reset graph panel to show the loading state
         if (graphPanel != null) {
             graphPanel.setTopology(null);
         }
 
-        discoverAndDisplay(devices);
+        discoverAndDisplay(originalDevices);
     }
 
     /**

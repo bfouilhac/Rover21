@@ -166,6 +166,9 @@ public class RSTPGraphPanel extends JPanel {
     }
 
     private void showEmptyState() {
+        // Clear old graph state to prevent stale references
+        cleanupGraphState();
+
         graphContainer.removeAll();
         emptyStateLabel.setText(lang.get("topology.graph_empty_state"));
         graphContainer.add(emptyStateLabel, BorderLayout.CENTER);
@@ -174,7 +177,27 @@ public class RSTPGraphPanel extends JPanel {
         detailsPanel.showEmptyState();
     }
 
+    /**
+     * Cleans up graph-related state to prevent memory leaks and stale references.
+     * Called before displaying an empty state or rebuilding the graph.
+     */
+    private void cleanupGraphState() {
+        // Clear renderer layout reference
+        renderer.clearLayout();
+
+        // Nullify old references to allow garbage collection
+        if (vv != null) {
+            vv.removeAll();
+            vv = null;
+        }
+        graph = null;
+        graphMouse = null;
+    }
+
     private void buildAndDisplayGraph() {
+        // Clean up the previous graph state before building a new one
+        cleanupGraphState();
+
         graph = buildGraph(topology);
 
         Dimension viewSize = graphContainer.getSize();

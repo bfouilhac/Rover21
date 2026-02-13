@@ -287,6 +287,14 @@ public class RSTPGraphRenderer {
     }
 
     /**
+     * Clears the layout reference to prevent memory leaks.
+     * Should be called when the topology is reset or the panel is cleared.
+     */
+    public void clearLayout() {
+        this.layout = null;
+    }
+
+    /**
      * Creates a function that returns the label text for edges.
      * For switch-to-switch links: shows port numbers ordered by visual position.
      * For end device links: shows only the switch port number.
