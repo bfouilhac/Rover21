@@ -9,6 +9,7 @@ import rover.model.rstp.TopologyNode;
 import edu.uci.ics.jung.algorithms.layout.Layout;
 
 import java.awt.*;
+import java.awt.font.FontRenderContext;
 import java.awt.geom.Point2D;
 import java.awt.geom.RoundRectangle2D;
 
@@ -30,12 +31,17 @@ public class RSTPGraphRenderer {
     private static final Color COLOR_EDGE_END_DEVICE = new Color(150, 150, 150); // Gray for end device links
     private static final Color COLOR_VERTEX_BORDER = new Color(33, 33, 33);
 
-    // Default node sizes (for small networks)
-    private static final int DEFAULT_NODE_WIDTH = 120;
-    private static final int DEFAULT_NODE_HEIGHT = 50;
-    private static final int MIN_NODE_WIDTH = 60;
-    private static final int MIN_NODE_HEIGHT = 30;
+    private static final int MIN_NODE_WIDTH = 80;
+    private static final int MIN_NODE_HEIGHT = 36;
+    private static final int MAX_NODE_WIDTH = 200;
+    private static final int MAX_NODE_HEIGHT = 70;
+    private static final int PADDING_HORIZONTAL = 20;
+    private static final int PADDING_VERTICAL = 12;
     private static final int ARC_SIZE = 14;
+
+    private static final Font LABEL_FONT = new Font("Segoe UI", Font.PLAIN, 12);
+    private static final Font SUBLABEL_FONT = new Font("Segoe UI", Font.PLAIN, 10);
+    private static final FontRenderContext FRC = new FontRenderContext(null, true, true);
 
     private Layout<TopologyNode, TopologyLink> layout;
     private int nodeCount = 1;
@@ -53,33 +59,51 @@ public class RSTPGraphRenderer {
     }
 
     /**
-     * Calculates the optimal node width based on graph size.
+     * Calculates node dimensions based on actual text content.
+     *
+     * @param node the node to measure
+     * @return dimension [width, height] for the node
      */
-    private int calculateNodeWidth() {
-        if (nodeCount <= 5) {
-            return DEFAULT_NODE_WIDTH;
+    private Dimension calculateNodeDimensions(TopologyNode node) {
+        String[] lines = getNodeTextLines(node);
+
+        int maxTextWidth = 0;
+        for (String line : lines) {
+            Font font = line.equals(lines[0]) ? LABEL_FONT : SUBLABEL_FONT;
+            int textWidth = (int) font.getStringBounds(line, FRC).getWidth();
+            maxTextWidth = Math.max(maxTextWidth, textWidth);
         }
 
-        // Calculate based on available space and node count
-        double availableWidth = viewSize.width * 0.8;
-        int optimalWidth = (int) (availableWidth / Math.sqrt(nodeCount) / 1.5);
+        int lineHeight = lines.length > 1 ? 28 : 18;
+        int textHeight = lineHeight + (lines.length > 1 ? 14 : 0);
 
-        // Clamp between min and default
-        return Math.max(MIN_NODE_WIDTH, Math.min(DEFAULT_NODE_WIDTH, optimalWidth));
+        int width = Math.clamp(maxTextWidth + PADDING_HORIZONTAL, MIN_NODE_WIDTH, MAX_NODE_WIDTH);
+        int height = Math.clamp(textHeight + PADDING_VERTICAL, MIN_NODE_HEIGHT, MAX_NODE_HEIGHT);
+
+        return new Dimension(width, height);
     }
 
     /**
-     * Calculates the optimal node height based on graph size.
+     * Extracts text lines from a node for measurement.
+     *
+     * @param node the node to extract text from
+     * @return array of text lines (main label, optional sublabel)
      */
-    private int calculateNodeHeight() {
-        if (nodeCount <= 5) {
-            return DEFAULT_NODE_HEIGHT;
+    private String[] getNodeTextLines(TopologyNode node) {
+        if (node instanceof EndDevice endDevice) {
+            return new String[]{endDevice.getName(), endDevice.getMacAddress()};
+        } else if (node instanceof RSTPNode rstpNode) {
+            String name = rstpNode.getDeviceName();
+            if (name == null || name.isEmpty()) {
+                name = "?";
+            }
+            String location = rstpNode.getDevice().getSystemLocation();
+            if (location != null && !location.isEmpty()) {
+                return new String[]{name, location};
+            }
+            return new String[]{name};
         }
-
-        double availableHeight = viewSize.height * 0.8;
-        int optimalHeight = (int) (availableHeight / Math.sqrt(nodeCount) / 1.5);
-
-        return Math.max(MIN_NODE_HEIGHT, Math.min(DEFAULT_NODE_HEIGHT, optimalHeight));
+        return new String[]{"?"};
     }
 
     /**
@@ -99,30 +123,24 @@ public class RSTPGraphRenderer {
 
     /**
      * Creates a function that returns the shape for vertices.
-     * Size is adaptive based on node count and view size.
-     * Root bridge is slightly larger, end devices are smaller.
+     * Size is adaptive based on actual text content to ensure text is fully visible.
+     * Root bridge has a thicker border (handled by stroke), end devices are slightly smaller.
      *
      * @return vertex shape function
      */
     public Function<TopologyNode, Shape> createVertexShapeTransformer() {
         return node -> {
-            int baseWidth = calculateNodeWidth();
-            int baseHeight = calculateNodeHeight();
+            Dimension baseDim = calculateNodeDimensions(node);
+            int width = baseDim.width;
+            int height = baseDim.height;
 
-            int width;
-            int height;
-
+            // Slight size adjustments for visual hierarchy
             if (!node.isSwitch()) {
-                // End devices are smaller
-                width = (int) (baseWidth * 0.7);
-                height = (int) (baseHeight * 0.8);
+                width = (int) (width * 0.95);
+                height = (int) (height * 0.95);
             } else if (node.isRootBridge()) {
-                // Root bridge is 20% larger
-                width = (int) (baseWidth * 1.2);
-                height = (int) (baseHeight * 1.2);
-            } else {
-                width = baseWidth;
-                height = baseHeight;
+                width = (int) (width * 1.1);
+                height = (int) (height * 1.1);
             }
 
             int arcSize = Math.min(ARC_SIZE, Math.min(width, height) / 4);
@@ -137,7 +155,7 @@ public class RSTPGraphRenderer {
 
     /**
      * Creates a function that returns the label text for vertices.
-     * Switches show device name and location, end devices show their name and MAC address.
+     * Switches show the device name and location, end devices show their name and MAC address.
      *
      * @return vertex label function
      */
@@ -161,27 +179,14 @@ public class RSTPGraphRenderer {
 
     /**
      * Creates the label for a switch node.
+     * Text is not truncated as node size adapts to content.
      */
     private String createSwitchLabel(RSTPNode node) {
         String name = node.getDeviceName();
         String location = node.getDevice().getSystemLocation();
 
-        int nodeWidth = calculateNodeWidth();
-        int maxLength = Math.max(8, nodeWidth / 8);
-
-        if (name != null && name.length() > maxLength) {
-            name = name.substring(0, maxLength - 2) + "..";
-        }
         if (name == null || name.isEmpty()) {
             name = "?";
-        }
-
-        if (nodeWidth < 80) {
-            return String.format("<html><center>%s</center></html>", name);
-        }
-
-        if (location != null && location.length() > maxLength) {
-            location = location.substring(0, maxLength - 2) + "..";
         }
 
         StringBuilder html = new StringBuilder("<html><center>");
@@ -263,10 +268,8 @@ public class RSTPGraphRenderer {
             if (!link.isSwitchLink()) {
                 return new BasicStroke(1.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND);
             }
-            if (link instanceof RSTPLink rstpLink) {
-                if (rstpLink.isActive() || rstpLink.isUnknown()) {
-                    return new BasicStroke(2.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND);
-                }
+            if (link instanceof RSTPLink rstpLink && (rstpLink.isActive() || rstpLink.isUnknown()) ) {
+                return new BasicStroke(2.5f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND);
             }
             // RSTP blocked: dashed line
             return new BasicStroke(2.0f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10.0f, new float[]{6.0f, 4.0f}, 0.0f);

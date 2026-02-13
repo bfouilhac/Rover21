@@ -35,8 +35,8 @@ public class RSTPTopologyDialog extends JDialog {
 
     private static final Logger logger = LoggerFactory.getLogger(RSTPTopologyDialog.class);
 
-    private static final int DIALOG_WIDTH = 1100;
-    private static final int DIALOG_HEIGHT = 550;
+    private static final int DIALOG_WIDTH = 1250;
+    private static final int DIALOG_HEIGHT = 700;
 
     // Sets minimum size: 16:9 ratio and 1066x600px
     private static final int MIN_DIALOG_WIDTH = 1066;

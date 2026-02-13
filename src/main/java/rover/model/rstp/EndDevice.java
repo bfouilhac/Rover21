@@ -89,5 +89,5 @@ public class EndDevice implements TopologyNode {
         return macAddress.hashCode();
     }
 
-    public Object getName() { return name;}
+    public String getName() { return name;}
 }

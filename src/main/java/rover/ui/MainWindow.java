@@ -1528,10 +1528,6 @@ public class MainWindow extends JFrame {
         PreferencesDialog dialog = new PreferencesDialog(this);
         dialog.setVisible(true);
         dialog.toFront();
-
-        if (dialog.wasApplied()) {
-            showInfo(lang.get("preferences.applied_title"), lang.get("preferences.applied_message"));
-        }
     }
 
     /**

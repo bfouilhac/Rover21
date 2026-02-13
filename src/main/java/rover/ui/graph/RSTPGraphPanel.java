@@ -27,6 +27,7 @@ import java.awt.*;
 import java.awt.event.ItemEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.MouseWheelEvent;
 import java.awt.geom.Point2D;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -429,6 +430,9 @@ public class RSTPGraphPanel extends JPanel {
         vv.setGraphMouse(graphMouse);
         panModeButton.setSelected(false);
 
+        // Add inverted mouse wheel zoom (intercepts before default handler)
+        vv.addMouseWheelListener(this::handleMouseWheelZoom);
+
         vv.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
@@ -439,6 +443,20 @@ public class RSTPGraphPanel extends JPanel {
         });
 
         vv.setVertexToolTipTransformer(this::createTooltip);
+    }
+
+    /**
+     * Handles mouse wheel zoom with an inverted direction.
+     * Scroll up (towards user) = zoom in, scroll down = zoom out.
+     */
+    private void handleMouseWheelZoom(MouseWheelEvent e) {
+        int rotation = e.getWheelRotation();
+        if (rotation < 0) {
+            zoomIn();
+        } else if (rotation > 0) {
+            zoomOut();
+        }
+        e.consume();
     }
 
     private String createTooltip(TopologyNode node) {

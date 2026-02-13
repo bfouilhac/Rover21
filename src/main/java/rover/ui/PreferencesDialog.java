@@ -528,7 +528,6 @@ public class PreferencesDialog extends JDialog {
         });
 
         cancelButton.addActionListener(_ -> {
-            applied = false;
             logger.info("Preferences dialog cancelled");
             dispose();
         });
@@ -546,11 +545,9 @@ public class PreferencesDialog extends JDialog {
      * @return a compound border with title and padding
      */
     private javax.swing.border.Border createTitledBorder(String title) {
-        TitledBorder border = BorderFactory.createTitledBorder(
-                BorderFactory.createEtchedBorder(), title);
+        TitledBorder border = BorderFactory.createTitledBorder(BorderFactory.createEtchedBorder(), title);
         border.setTitleFont(FONT_TITLE);
-        return BorderFactory.createCompoundBorder(border,
-                BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        return BorderFactory.createCompoundBorder(border, BorderFactory.createEmptyBorder(10, 10, 10, 10));
     }
 
     /**
